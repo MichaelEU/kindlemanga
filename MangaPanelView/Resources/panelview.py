@@ -9,7 +9,7 @@ Panels are detected with Kumiko (OpenCV), then, depending on the device:
     in reading order, written as XTC (Xteink), PDF (Sony) or CBZ.
 
 Usage:
-  panelview.py <folder-or-cbz> -d basic|scribe|x4|prs950|generic [-o outdir] [--ltr]
+  panelview.py <folder-or-cbz> -d DEVICE [-o outdir] [--ltr]    (see -h for device ids)
 """
 import argparse, hashlib, json, os, shutil, struct, subprocess, sys, tempfile, uuid, zipfile
 from html import escape
@@ -49,9 +49,15 @@ DEVICES = {
     "kol":     _dev("Kobo Libra", 1264, 1680, "panels", "cbz"),
     "kos":     _dev("Kobo Sage or Forma", 1440, 1920, "panels", "cbz"),
     "koe":     _dev("Kobo Elipsa", 1404, 1872, "panels", "cbz"),
+    # Sony Reader: every model reads PDF
+    "prs500":  _dev("Sony PRS-500 or 505", 600, 800, "panels", "pdf"),
+    "prs300":  _dev("Sony PRS-300 or 350 (Pocket)", 600, 800, "panels", "pdf"),
+    "prs600":  _dev("Sony PRS-600, 650 or 700 (Touch)", 600, 800, "panels", "pdf"),
+    "prs950":  _dev("Sony PRS-900 or 950 (Daily Edition)", 600, 1024, "panels", "pdf"),
+    "prst":    _dev("Sony PRS-T1 or T2", 600, 800, "panels", "pdf"),
+    "prst3":   _dev("Sony PRS-T3", 758, 1024, "panels", "pdf"),
     # Other readers
     "x4":      _dev("Xteink X4", 480, 800, "panels", "xtch"),
-    "prs950":  _dev("Sony PRS-950", 600, 1024, "panels", "pdf"),
     "generic": _dev("Other reader (CBZ)", 1264, 1680, "panels", "cbz"),
 }
 FORMATS = {"zoom": {"epub", "mobi"}, "panels": {"xtch", "xtc", "pdf", "cbz", "epub", "mobi"}}

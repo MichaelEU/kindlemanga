@@ -72,13 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Model
 
 enum DeviceGroup: CaseIterable {
-    case kindle, olderKindle, kobo, other
+    case kindle, olderKindle, kobo, sony, other
 
     var title: String {
         switch self {
         case .kindle: "Kindle: zooms panel by panel"
         case .olderKindle: "Older Kindle: one panel per page"
         case .kobo: "Kobo: one panel per page"
+        case .sony: "Sony Reader: one panel per page"
         case .other: "Other readers: one panel per page"
         }
     }
@@ -89,7 +90,8 @@ enum Device: String, CaseIterable, Identifiable {
     case basic, k600, kpw, kpw34, kpw5, kpw6, kcs, ko, scribe, ks3, kscs
     case k34, kdx, k12
     case koc, kon, kol, kos, koe
-    case x4, prs950, generic
+    case prs500, prs300, prs600, prs950, prst, prst3
+    case x4, generic
 
     var id: String { rawValue }
 
@@ -115,7 +117,12 @@ enum Device: String, CaseIterable, Identifiable {
         case .kos: ("Kobo Sage or Forma", .kobo, 1440, 1920, "CBZ")
         case .koe: ("Kobo Elipsa", .kobo, 1404, 1872, "CBZ")
         case .x4: ("Xteink X4", .other, 480, 800, "XTCH")
-        case .prs950: ("Sony PRS-950", .other, 600, 1024, "PDF")
+        case .prs500: ("Sony PRS-500 or 505", .sony, 600, 800, "PDF")
+        case .prs300: ("Sony PRS-300 or 350 (Pocket)", .sony, 600, 800, "PDF")
+        case .prs600: ("Sony PRS-600, 650 or 700 (Touch)", .sony, 600, 800, "PDF")
+        case .prs950: ("Sony PRS-900 or 950 (Daily Edition)", .sony, 600, 1024, "PDF")
+        case .prst: ("Sony PRS-T1 or T2", .sony, 600, 800, "PDF")
+        case .prst3: ("Sony PRS-T3", .sony, 758, 1024, "PDF")
         case .generic: ("Other reader (CBZ)", .other, 1264, 1680, "CBZ")
         }
     }
@@ -128,6 +135,7 @@ enum Device: String, CaseIterable, Identifiable {
         switch self {
         case .basic: "Kindle"
         case .scribe: "Kindle Scribe"
+        case .prs950: "Sony PRS-950"
         default: label
         }
     }
@@ -143,7 +151,8 @@ enum Device: String, CaseIterable, Identifiable {
         case .kindle: self == .scribe || self == .ks3 || self == .kscs ? "pencil.and.scribble" : "book.closed"
         case .olderKindle: "book.closed.fill"
         case .kobo: "books.vertical"
-        case .other: self == .x4 ? "rectangle.portrait" : self == .prs950 ? "book" : "square.stack"
+        case .sony: "book"
+        case .other: self == .x4 ? "rectangle.portrait" : "square.stack"
         }
     }
 
@@ -735,7 +744,7 @@ struct SettingsPane: View {
             tips.append("Kobo: copy the CBZ files onto the Kobo over USB.")
         }
         if c.devices.contains(.x4) { tips.append("Xteink X4: copy the .\(c.xteinkFormat) files onto its microSD card and open them in CrossPoint.") }
-        if c.devices.contains(.prs950) { tips.append("Sony: copy the PDFs onto the Reader over USB.") }
+        if c.devices.contains(where: { $0.group == .sony }) { tips.append("Sony Reader: copy the PDFs onto the Reader over USB.") }
         if c.devices.contains(.generic) { tips.append("Other readers: CBZ opens in most comic apps.") }
         return tips.joined(separator: "\n")
     }

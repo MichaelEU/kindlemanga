@@ -5,7 +5,7 @@ on each page:
 
 - **Kindles, Paperwhites, Oasis and Scribe:** panel-by-panel guided view. You tap through a page
   one panel at a time, the way Amazon's own comics work.
-- **Older Kindles, Kobos, the Xteink X4, Sony PRS-950 and other readers:** each panel becomes its
+- **Older Kindles, Kobos, Sony Readers, the Xteink X4 and other readers:** each panel becomes its
   own full-screen page, in reading order, so small screens show one readable panel at a time.
 
 Tools like Kindle Comic Converter split every page into the same four quarters. That cuts
@@ -81,8 +81,13 @@ Screen sizes follow [Kindle Comic Converter](https://github.com/ciromattia/kcc)'
 | Kobo Libra | CBZ | 1264×1680 |
 | Kobo Sage or Forma | CBZ | 1440×1920 |
 | Kobo Elipsa | CBZ | 1404×1872 |
+| Sony PRS-500 or 505 | PDF | 600×800 |
+| Sony PRS-300 or 350 (Pocket) | PDF | 600×800 |
+| Sony PRS-600, 650 or 700 (Touch) | PDF | 600×800 |
+| Sony PRS-900 or 950 (Daily Edition) | PDF | 600×1024 |
+| Sony PRS-T1 or T2 | PDF | 600×800 |
+| Sony PRS-T3 | PDF | 758×1024 |
 | Xteink X4 | XTCH (4 shades) or XTC (black & white) | 480×800 |
-| Sony PRS-950 | PDF | 600×1024 |
 | Other reader | CBZ | 1264×1680 |
 
 The oldest Kindles (1, 2, Keyboard, Touch and DX) can't do panel zoom, so they get one panel per
@@ -245,10 +250,10 @@ native pre-rendered formats, so pages turn fast. Each page turn shows the next p
 half the size and use dithering for grays. Turning on *Turn wide panels sideways* is worth trying
 on the X4: its screen is narrow, so wide panels get much bigger when you turn the reader.
 
-### Sony PRS-950
+### Sony Reader
 
-Connect the Reader over USB and copy the PDFs onto it. Each PDF page is one panel, sized to the
-Reader's 600×1024 screen.
+Connect the Reader over USB and copy the PDFs onto it. Every Sony Reader model opens PDFs, and
+each PDF page is one panel, shaped to that model's screen.
 
 ### Other readers
 
@@ -288,7 +293,7 @@ PY=~/Library/Application\ Support/Manga\ Panel\ View/venv/bin/python
 
 | Option | Meaning |
 |---|---|
-| `-d ID` | Device. Kindles with panel zoom: `basic`, `k600`, `kpw`, `kpw34`, `kpw5`, `kpw6`, `kcs`, `ko`, `scribe`, `ks3`, `kscs`. Older Kindles: `k34`, `kdx`, `k12`. Kobo: `koc`, `kon`, `kol`, `kos`, `koe`. Others: `x4`, `prs950`, `generic`. Run with `-h` for the full list. |
+| `-d ID` | Device. Kindles with panel zoom: `basic`, `k600`, `kpw`, `kpw34`, `kpw5`, `kpw6`, `kcs`, `ko`, `scribe`, `ks3`, `kscs`. Older Kindles: `k34`, `kdx`, `k12`. Kobo: `koc`, `kon`, `kol`, `kos`, `koe`. Sony: `prs500`, `prs300`, `prs600`, `prs950`, `prst`, `prst3`. Others: `x4`, `generic`. Run with `-h` for the full list. |
 | `-o DIR` | Output folder |
 | `-f FORMAT` | Kindles: `epub` or `mobi` (default `epub`; `mobi` for older Kindles). Other devices: `xtch`, `xtc`, `pdf` or `cbz` (defaults: X4 `xtch`, Sony `pdf`, Kobo and other `cbz`) |
 | `--page-first` | One-panel-per-page devices: show each whole page before its panels |
