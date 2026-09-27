@@ -3,10 +3,10 @@
 A Mac app that turns manga `.cbz` chapters into e-reader books that follow the **real panels**
 on each page:
 
-- **Kindle and Kindle Scribe:** panel-by-panel guided view. You tap through a page one panel at
-  a time, the way Amazon's own comics work.
-- **Xteink X4, Sony PRS-950 and other readers:** each panel becomes its own full-screen page, in
-  reading order, so small screens show one readable panel at a time.
+- **Kindles, Paperwhites, Oasis and Scribe:** panel-by-panel guided view. You tap through a page
+  one panel at a time, the way Amazon's own comics work.
+- **Older Kindles, Kobos, the Xteink X4, Sony PRS-950 and other readers:** each panel becomes its
+  own full-screen page, in reading order, so small screens show one readable panel at a time.
 
 Tools like Kindle Comic Converter split every page into the same four quarters. That cuts
 panels in half and makes spreads unreadable. Manga Panel View finds the actual panels on each
@@ -51,8 +51,45 @@ less than about half of it is also shown whole first, so art outside the panels 
 
 ### Supported devices
 
-| Device | What you get | Format | Screen |
-|---|---|---|---|
+Screen sizes follow [Kindle Comic Converter](https://github.com/ciromattia/kcc)'s device profiles.
+
+**Kindles with panel zoom** (EPUB or MOBI):
+
+| Device | Screen |
+|---|---|
+| Kindle (2022 and later) | 1072×1448 |
+| Kindle 5, 7, 8 or 10 | 600×800 |
+| Kindle Paperwhite 1 or 2 | 758×1024 |
+| Kindle Paperwhite 3 or 4, Voyage, Oasis 1 | 1072×1448 |
+| Kindle Paperwhite 5 or Signature | 1236×1648 |
+| Kindle Paperwhite 6 (2024) | 1272×1696 |
+| Kindle Colorsoft | 1272×1696, colour |
+| Kindle Oasis 2 or 3 | 1264×1680 |
+| Kindle Scribe 1 or 2 | 1860×2480 |
+| Kindle Scribe 3 | 1986×2648 |
+| Kindle Scribe Colorsoft | 1986×2648, colour |
+
+**One panel per page:**
+
+| Device | Format | Screen |
+|---|---|---|
+| Kindle Keyboard or Touch | MOBI or EPUB | 600×800 |
+| Kindle DX | MOBI or EPUB | 824×1000 |
+| Kindle 1 or 2 | MOBI or EPUB | 600×670 |
+| Kobo Clara | CBZ | 1072×1448 |
+| Kobo Nia | CBZ | 758×1024 |
+| Kobo Libra | CBZ | 1264×1680 |
+| Kobo Sage or Forma | CBZ | 1440×1920 |
+| Kobo Elipsa | CBZ | 1404×1872 |
+| Xteink X4 | XTCH (4 shades) or XTC (black & white) | 480×800 |
+| Sony PRS-950 | PDF | 600×1024 |
+| Other reader | CBZ | 1264×1680 |
+
+The oldest Kindles (1, 2, Keyboard, Touch and DX) can't do panel zoom, so they get one panel per
+page inside a normal Kindle book. The Colorsoft models keep colour; everything else is
+converted to grayscale.
+
+---|---|---|---|
 | Kindle | Panel zoom inside the page | EPUB or MOBI | 1072×1448 |
 | Kindle Scribe | Panel zoom inside the page | EPUB or MOBI | 1860×2480 |
 | Xteink X4 | One panel per page | XTCH (4 shades) or XTC (black & white) | 480×800 |
@@ -188,6 +225,16 @@ Open a converted chapter and tap into a panel. The Kindle zooms to it, and each 
 moves to the next panel in reading order. On some models and firmware versions, panel view
 has to be switched on first in the **Aa** menu.
 
+### Older Kindles (1, 2, Keyboard, Touch, DX)
+
+Set *Kindle format* to **MOBI**, plug the Kindle in over USB (it shows up as a drive), and copy
+the books into its `documents` folder. Each page turn shows the next panel.
+
+### Kobo
+
+Plug the Kobo in over USB and copy the CBZ files onto it. Kobo opens CBZ comics natively, and
+each page is one panel.
+
 ### Xteink X4 (CrossPoint)
 
 Copy the `.xtch` (or `.xtc`) files onto the X4's microSD card and open them from the library in
@@ -221,7 +268,7 @@ and phone or tablet comic apps. Each page is one panel.
 | **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is ticked. |
 | **Show whole page before its panels** | One-panel-per-page devices: show each full page first as an overview, then its panels. |
 | **Turn wide panels sideways** | One-panel-per-page devices: rotate wide panels 90° when that makes them noticeably bigger. Turn the reader to read them. |
-| **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown when a Kindle is ticked. |
+| **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown when any Kindle is ticked; older Kindles should use MOBI. |
 | **Save to** | Where the books go. Each device gets a subfolder. |
 | **Chapters at once** | How many chapters of the current title are converted in parallel. 2 is a good default; raise it on a fast Mac. |
 
@@ -241,9 +288,9 @@ PY=~/Library/Application\ Support/Manga\ Panel\ View/venv/bin/python
 
 | Option | Meaning |
 |---|---|
-| `-d basic` / `scribe` / `x4` / `prs950` / `generic` | Device |
+| `-d ID` | Device. Kindles with panel zoom: `basic`, `k600`, `kpw`, `kpw34`, `kpw5`, `kpw6`, `kcs`, `ko`, `scribe`, `ks3`, `kscs`. Older Kindles: `k34`, `kdx`, `k12`. Kobo: `koc`, `kon`, `kol`, `kos`, `koe`. Others: `x4`, `prs950`, `generic`. Run with `-h` for the full list. |
 | `-o DIR` | Output folder |
-| `-f FORMAT` | Kindles: `epub` (default) or `mobi`. Other devices: `xtch`, `xtc`, `pdf` or `cbz` (defaults: X4 `xtch`, Sony `pdf`, other `cbz`) |
+| `-f FORMAT` | Kindles: `epub` or `mobi` (default `epub`; `mobi` for older Kindles). Other devices: `xtch`, `xtc`, `pdf` or `cbz` (defaults: X4 `xtch`, Sony `pdf`, Kobo and other `cbz`) |
 | `--page-first` | One-panel-per-page devices: show each whole page before its panels |
 | `--rotate-wide` | One-panel-per-page devices: turn wide panels sideways when that makes them bigger |
 | `--ltr` | Left-to-right comics instead of manga |

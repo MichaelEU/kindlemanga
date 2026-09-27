@@ -21,15 +21,40 @@ KUMIKO = Path(os.environ.get("KUMIKO", HERE / "kumiko" / "kumiko"))
 KINDLEGEN = os.environ.get(
     "KINDLEGEN",
     "/Applications/Kindle Previewer 4.app/Contents/Resources/KFXGen/bin/kindlegen")
-# mode "zoom": Kindle guided view inside the page; "panels": one panel per page
+# mode "zoom": Kindle guided view inside the page; "panels": one panel per page.
+# Screen sizes follow Kindle Comic Converter's device profiles.
+def _dev(label, w, h, mode, fmt, color=False):
+    return dict(label=label, size=(w, h), mode=mode, fmt=fmt, color=color)
+
 DEVICES = {
-    "basic":   dict(label="Kindle",             size=(1072, 1448), mode="zoom",   fmt="epub"),
-    "scribe":  dict(label="Kindle Scribe",      size=(1860, 2480), mode="zoom",   fmt="epub"),
-    "x4":      dict(label="Xteink X4",          size=(480, 800),   mode="panels", fmt="xtch"),
-    "prs950":  dict(label="Sony PRS-950",       size=(600, 1024),  mode="panels", fmt="pdf"),
-    "generic": dict(label="Other reader (CBZ)", size=(1264, 1680), mode="panels", fmt="cbz"),
+    # Kindles with panel view
+    "basic":   _dev("Kindle (2022 and later)", 1072, 1448, "zoom", "epub"),
+    "k600":    _dev("Kindle 5, 7, 8 or 10", 600, 800, "zoom", "epub"),
+    "kpw":     _dev("Kindle Paperwhite 1 or 2", 758, 1024, "zoom", "epub"),
+    "kpw34":   _dev("Kindle Paperwhite 3 or 4, Voyage, Oasis 1", 1072, 1448, "zoom", "epub"),
+    "kpw5":    _dev("Kindle Paperwhite 5 or Signature", 1236, 1648, "zoom", "epub"),
+    "kpw6":    _dev("Kindle Paperwhite 6 (2024)", 1272, 1696, "zoom", "epub"),
+    "kcs":     _dev("Kindle Colorsoft", 1272, 1696, "zoom", "epub", color=True),
+    "ko":      _dev("Kindle Oasis 2 or 3", 1264, 1680, "zoom", "epub"),
+    "scribe":  _dev("Kindle Scribe 1 or 2", 1860, 2480, "zoom", "epub"),
+    "ks3":     _dev("Kindle Scribe 3", 1986, 2648, "zoom", "epub"),
+    "kscs":    _dev("Kindle Scribe Colorsoft", 1986, 2648, "zoom", "epub", color=True),
+    # Older Kindles: no panel view, so one panel per page inside a Kindle book
+    "k34":     _dev("Kindle Keyboard or Touch", 600, 800, "panels", "mobi"),
+    "kdx":     _dev("Kindle DX", 824, 1000, "panels", "mobi"),
+    "k12":     _dev("Kindle 1 or 2", 600, 670, "panels", "mobi"),
+    # Kobo: reads CBZ natively
+    "koc":     _dev("Kobo Clara", 1072, 1448, "panels", "cbz"),
+    "kon":     _dev("Kobo Nia", 758, 1024, "panels", "cbz"),
+    "kol":     _dev("Kobo Libra", 1264, 1680, "panels", "cbz"),
+    "kos":     _dev("Kobo Sage or Forma", 1440, 1920, "panels", "cbz"),
+    "koe":     _dev("Kobo Elipsa", 1404, 1872, "panels", "cbz"),
+    # Other readers
+    "x4":      _dev("Xteink X4", 480, 800, "panels", "xtch"),
+    "prs950":  _dev("Sony PRS-950", 600, 1024, "panels", "pdf"),
+    "generic": _dev("Other reader (CBZ)", 1264, 1680, "panels", "cbz"),
 }
-FORMATS = {"zoom": {"epub", "mobi"}, "panels": {"xtch", "xtc", "pdf", "cbz"}}
+FORMATS = {"zoom": {"epub", "mobi"}, "panels": {"xtch", "xtc", "pdf", "cbz", "epub", "mobi"}}
 HQ = 1.5           # stored image resolution relative to screen
 MIN_AREA = 0.012   # ignore detected boxes smaller than this fraction of the page
 MAX_AREA = 0.80    # a panel this big gains nothing from zooming
@@ -49,14 +74,18 @@ def detect_panels(jpg_dir, rtl):
     return {Path(p["filename"]).name: p for p in json.loads(out)}
 
 
-def fit_page(src, W, H):
+def open_page(src, color):
+    return Image.open(src).convert("RGB" if color else "L")
+
+
+def fit_page(src, W, H, color=False):
     """Fit page into an (HQ*W)x(HQ*H) white canvas, return image + placement in that canvas."""
-    im = Image.open(src).convert("L")
+    im = open_page(src, color)
     CW, CH = int(W * HQ), int(H * HQ)
     s = min(CW / im.width, CH / im.height)
     nw, nh = round(im.width * s), round(im.height * s)
     im = im.resize((nw, nh), Image.LANCZOS)
-    canvas = Image.new("L", (CW, CH), 255)
+    canvas = Image.new(im.mode, (CW, CH), "white")
     ox, oy = (CW - nw) // 2, (CH - nh) // 2
     canvas.paste(im, (ox, oy))
     return canvas, s, ox, oy
@@ -70,14 +99,14 @@ def fit_screen(im, W, H, rotate_wide=False):
             im = im.rotate(-90, expand=True)
     s = min(W / im.width, H / im.height)
     im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.LANCZOS)
-    screen = Image.new("L", (W, H), 255)
+    screen = Image.new(im.mode, (W, H), "white")
     screen.paste(im, ((W - im.width) // 2, (H - im.height) // 2))
     return screen
 
 
-def panel_screens(src, boxes, W, H, whole, page_first, rotate_wide):
+def panel_screens(src, boxes, W, H, whole, page_first, rotate_wide, color=False):
     """Screens for one source page: the whole page and/or each panel, in reading order."""
-    im = Image.open(src).convert("L")
+    im = open_page(src, color)
     if whole or not boxes:
         return [fit_screen(im, W, H, rotate_wide)]
     screens = [fit_screen(im, W, H, rotate_wide)] if page_first else []
@@ -141,6 +170,39 @@ def write_cbz(screens, dest):
 
 WRITERS = {"xtc": write_xtc, "xtch": lambda screens, dest: write_xtc(screens, dest, gray=True),
            "pdf": write_pdf, "cbz": write_cbz}
+
+
+def kindlegen(epub):
+    """Build a .mobi next to the .epub with Amazon's kindlegen (from Kindle Previewer)."""
+    res = subprocess.run([KINDLEGEN, "-dont_append_source", "-locale", "en", str(epub)],
+                         capture_output=True, text=True)
+    mobi = Path(epub).with_suffix(".mobi")
+    if not mobi.exists():
+        print(res.stdout[-3000:])
+        sys.exit("kindlegen failed")
+    return mobi
+
+
+def write_screen_book(screens, dest, title, W, H, rtl, fmt):
+    """Fixed-layout Kindle book with one screen per page (for Kindles without panel view)."""
+    book = Path(dest).parent / "screen_book"
+    (book / "OEBPS" / "Images").mkdir(parents=True)
+    (book / "OEBPS" / "Text").mkdir()
+    (book / "OEBPS" / "Text" / "style.css").write_text(CSS)
+    names = []
+    for i, screen in enumerate(screens, 1):
+        name = f"{i:04d}"
+        screen.save(book / "OEBPS" / "Images" / f"{name}.jpg", quality=88, optimize=True)
+        if i == 1:
+            screen.save(book / "OEBPS" / "Images" / "cover.jpg", quality=88)
+        (book / "OEBPS" / "Text" / f"{name}.xhtml").write_text(page_xhtml(name, W, H, [], i))
+        names.append(name)
+    build_epub(book, title, names, W, H, rtl)
+    epub = Path(dest).with_suffix(".epub")
+    zip_epub(book, epub)
+    result = epub if fmt == "epub" else kindlegen(epub)
+    if result != Path(dest):
+        shutil.move(result, dest)
 
 
 def page_xhtml(name, W, H, panels, n):
@@ -293,9 +355,13 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
                     boxes = []                          # one full-page panel: just show the page
                 coverage = sum(b[2] * b[3] for b in boxes) / area
                 whole = i in nozoom or i <= skip_first or i > len(pages) - skip_last
-                screens += panel_screens(p, boxes, W, H, whole, page_first or coverage < MIN_COVERAGE, rotate_wide)
+                screens += panel_screens(p, boxes, W, H, whole, page_first or coverage < MIN_COVERAGE,
+                                         rotate_wide, profile["color"])
             result = tmp / f"book.{fmt}"
-            WRITERS[fmt](screens, result)
+            if fmt in ("epub", "mobi"):
+                write_screen_book(screens, result, title, W, H, rtl, fmt)
+            else:
+                WRITERS[fmt](screens, result)
             part = outdir / f".{safe}.{fmt}.part"
             shutil.copy(result, part)
             os.replace(part, outdir / f"{safe}.{fmt}")
@@ -306,7 +372,7 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
         names, dbg = [], []
         for i, p in enumerate(pages, 1):
             name = f"{i:04d}"
-            canvas, s, ox, oy = fit_page(p, W, H)
+            canvas, s, ox, oy = fit_page(p, W, H, profile["color"])
             canvas.save(book / "OEBPS" / "Images" / f"{name}.jpg", quality=88, optimize=True)
             if i == 1:
                 canvas.convert("RGB").save(book / "OEBPS" / "Images" / "cover.jpg", quality=88)
@@ -327,11 +393,7 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
         if fmt == "epub":
             result = epub
         else:
-            res = subprocess.run([KINDLEGEN, "-dont_append_source", "-locale", "en", str(epub)],
-                                 capture_output=True, text=True)
-            result = tmp / f"{title}.mobi"
-            if not result.exists():
-                print(res.stdout[-3000:]); sys.exit("kindlegen failed")
+            result = kindlegen(epub)
             if keep_epub:
                 shutil.copy(epub, outdir / f"{safe}.epub")
         part = outdir / f".{safe}.{fmt}.part"          # never leave a half-written book behind

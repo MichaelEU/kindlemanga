@@ -71,42 +71,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Model
 
-/// Raw values are the converter's `-d` device ids.
+enum DeviceGroup: CaseIterable {
+    case kindle, olderKindle, kobo, other
+
+    var title: String {
+        switch self {
+        case .kindle: "Kindle: zooms panel by panel"
+        case .olderKindle: "Older Kindle: one panel per page"
+        case .kobo: "Kobo: one panel per page"
+        case .other: "Other readers: one panel per page"
+        }
+    }
+}
+
+/// Raw values are the converter's `-d` device ids. Screen sizes follow Kindle Comic Converter's profiles.
 enum Device: String, CaseIterable, Identifiable {
-    case basic, scribe, x4, prs950, generic
+    case basic, k600, kpw, kpw34, kpw5, kpw6, kcs, ko, scribe, ks3, kscs
+    case k34, kdx, k12
+    case koc, kon, kol, kos, koe
+    case x4, prs950, generic
+
     var id: String { rawValue }
 
-    var label: String {
+    private var spec: (label: String, group: DeviceGroup, width: Int, height: Int, format: String?) {
+        switch self {
+        case .basic: ("Kindle (2022 and later)", .kindle, 1072, 1448, nil)
+        case .k600: ("Kindle 5, 7, 8 or 10", .kindle, 600, 800, nil)
+        case .kpw: ("Kindle Paperwhite 1 or 2", .kindle, 758, 1024, nil)
+        case .kpw34: ("Kindle Paperwhite 3 or 4, Voyage, Oasis 1", .kindle, 1072, 1448, nil)
+        case .kpw5: ("Kindle Paperwhite 5 or Signature", .kindle, 1236, 1648, nil)
+        case .kpw6: ("Kindle Paperwhite 6 (2024)", .kindle, 1272, 1696, nil)
+        case .kcs: ("Kindle Colorsoft", .kindle, 1272, 1696, nil)
+        case .ko: ("Kindle Oasis 2 or 3", .kindle, 1264, 1680, nil)
+        case .scribe: ("Kindle Scribe 1 or 2", .kindle, 1860, 2480, nil)
+        case .ks3: ("Kindle Scribe 3", .kindle, 1986, 2648, nil)
+        case .kscs: ("Kindle Scribe Colorsoft", .kindle, 1986, 2648, nil)
+        case .k34: ("Kindle Keyboard or Touch", .olderKindle, 600, 800, nil)
+        case .kdx: ("Kindle DX", .olderKindle, 824, 1000, nil)
+        case .k12: ("Kindle 1 or 2", .olderKindle, 600, 670, nil)
+        case .koc: ("Kobo Clara", .kobo, 1072, 1448, "CBZ")
+        case .kon: ("Kobo Nia", .kobo, 758, 1024, "CBZ")
+        case .kol: ("Kobo Libra", .kobo, 1264, 1680, "CBZ")
+        case .kos: ("Kobo Sage or Forma", .kobo, 1440, 1920, "CBZ")
+        case .koe: ("Kobo Elipsa", .kobo, 1404, 1872, "CBZ")
+        case .x4: ("Xteink X4", .other, 480, 800, "XTCH")
+        case .prs950: ("Sony PRS-950", .other, 600, 1024, "PDF")
+        case .generic: ("Other reader (CBZ)", .other, 1264, 1680, "CBZ")
+        }
+    }
+
+    var label: String { spec.label }
+    var group: DeviceGroup { spec.group }
+
+    /// Output folder. Kept stable for devices from earlier versions, so finished chapters are still skipped.
+    var folder: String {
         switch self {
         case .basic: "Kindle"
         case .scribe: "Kindle Scribe"
-        case .x4: "Xteink X4"
-        case .prs950: "Sony PRS-950"
-        case .generic: "Other reader (CBZ)"
+        default: label
         }
     }
+
+    /// Any Kindle: uses the Kindle format setting (EPUB or MOBI).
+    var isKindle: Bool { group == .kindle || group == .olderKindle }
+    /// Zooms inside the page; everything else gets one panel per page.
+    var zooms: Bool { group == .kindle }
+    var isColor: Bool { self == .kcs || self == .kscs }
 
     var symbol: String {
-        switch self {
-        case .basic: "book.closed"
-        case .scribe: "pencil.and.scribble"
-        case .x4: "rectangle.portrait"
-        case .prs950: "book"
-        case .generic: "square.stack"
+        switch group {
+        case .kindle: self == .scribe || self == .ks3 || self == .kscs ? "pencil.and.scribble" : "book.closed"
+        case .olderKindle: "book.closed.fill"
+        case .kobo: "books.vertical"
+        case .other: self == .x4 ? "rectangle.portrait" : self == .prs950 ? "book" : "square.stack"
         }
     }
 
-    /// Kindles zoom panel by panel inside the page; the others get one panel per page.
-    var isKindle: Bool { self == .basic || self == .scribe }
-
     var detail: String {
-        switch self {
-        case .basic: "Panel zoom · 1072×1448"
-        case .scribe: "Panel zoom · 1860×2480"
-        case .x4: "One panel per page · XTCH · 480×800"
-        case .prs950: "One panel per page · PDF · 600×1024"
-        case .generic: "One panel per page · CBZ · 1264×1680"
-        }
+        var parts = [zooms ? "Panel zoom" : "One panel per page"]
+        if let format = spec.format { parts.append(format) }
+        parts.append("\(spec.width)×\(spec.height)")
+        if isColor { parts.append("colour") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -224,7 +270,7 @@ final class Converter: ObservableObject {
 
     var selectedDevices: [Device] { Device.allCases.filter(devices.contains) }
     var anyKindle: Bool { devices.contains(where: \.isKindle) }
-    var anyReader: Bool { devices.contains(where: { !$0.isKindle }) }
+    var anyPanels: Bool { devices.contains(where: { !$0.zooms }) }
     var needsKindlegen: Bool { anyKindle && format == "mobi" }
 
     func binding(for device: Device) -> Binding<Bool> {
@@ -378,13 +424,12 @@ final class Converter: ObservableObject {
             unparsed = []
             var args = ["-u", script.path, item.url.path,
                         "-d", device.rawValue,
-                        "-o", output.appendingPathComponent(device.label).path,
+                        "-o", output.appendingPathComponent(device.folder).path,
                         "--skip-first", "\(skipFirst)", "--skip-last", "\(skipLast)",
                         "-j", "\(jobs)"]
-            if device.isKindle {
-                args += ["--format", format]
-            } else {
-                if device == .x4 { args += ["--format", xteinkFormat] }
+            if device.isKindle { args += ["--format", format] }
+            if device == .x4 { args += ["--format", xteinkFormat] }
+            if !device.zooms {
                 if pageFirst { args.append("--page-first") }
                 if rotateWide { args.append("--rotate-wide") }
             }
@@ -410,7 +455,7 @@ final class Converter: ObservableObject {
     }
 
     func reveal(_ item: QueueItem? = nil) {
-        var dirs = selectedDevices.map { output.appendingPathComponent($0.label) }
+        var dirs = selectedDevices.map { output.appendingPathComponent($0.folder) }
         if let item, !item.isFile {
             let series = dirs.map { $0.appendingPathComponent(item.name) }
             if series.contains(where: { FileManager.default.fileExists(atPath: $0.path) }) { dirs = series }
@@ -567,14 +612,11 @@ struct SettingsPane: View {
             Section {
                 LabeledContent("Devices") {
                     Menu {
-                        Section("Kindle: zooms panel by panel") {
-                            ForEach(Device.allCases.filter(\.isKindle)) { d in
-                                Toggle(d.label, isOn: c.binding(for: d))
-                            }
-                        }
-                        Section("Other readers: one panel per page") {
-                            ForEach(Device.allCases.filter { !$0.isKindle }) { d in
-                                Toggle(d.label, isOn: c.binding(for: d))
+                        ForEach(DeviceGroup.allCases, id: \.self) { group in
+                            Section(group.title) {
+                                ForEach(Device.allCases.filter { $0.group == group }) { d in
+                                    Toggle(d.label, isOn: c.binding(for: d))
+                                }
                             }
                         }
                     } label: {
@@ -599,7 +641,7 @@ struct SettingsPane: View {
                     .foregroundStyle(.secondary)
             }
 
-            if c.anyReader {
+            if c.anyPanels {
                 Section {
                     if c.devices.contains(.x4) {
                         Picker("Xteink shades", selection: $c.xteinkFormat) {
@@ -612,7 +654,7 @@ struct SettingsPane: View {
                 } header: {
                     Text("One panel per page")
                 } footer: {
-                    Text("For the Xteink X4, Sony and other readers. 4 shades keeps manga screentones; black & white files are half the size. Turning wide panels sideways makes them much bigger; rotate your reader to read them. Pages where the panels can't be found are shown whole.")
+                    Text("For older Kindles, Kobos, the Xteink X4, Sony and other readers. 4 shades keeps manga screentones; black & white files are half the size. Turning wide panels sideways makes them much bigger; rotate your reader to read them. Pages where the panels can't be found are shown whole.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -682,9 +724,15 @@ struct SettingsPane: View {
 
     private var deliveryTips: String {
         var tips: [String] = []
-        if c.anyKindle {
+        if c.devices.contains(where: \.zooms) {
             tips.append(c.format == "epub" ? "Kindle: send the EPUBs with the Send to Kindle app."
                                            : "Kindle: copy the MOBIs over USB into the documents folder.")
+        }
+        if c.devices.contains(where: { $0.group == .olderKindle }) {
+            tips.append("Older Kindles: choose MOBI and copy the books over USB into the documents folder.")
+        }
+        if c.devices.contains(where: { $0.group == .kobo }) {
+            tips.append("Kobo: copy the CBZ files onto the Kobo over USB.")
         }
         if c.devices.contains(.x4) { tips.append("Xteink X4: copy the .\(c.xteinkFormat) files onto its microSD card and open them in CrossPoint.") }
         if c.devices.contains(.prs950) { tips.append("Sony: copy the PDFs onto the Reader over USB.") }
@@ -952,7 +1000,7 @@ struct BottomBar: View {
         if c.selectedDevices.isEmpty { return "Pick at least one device." }
         if c.needsKindlegen && !c.hasKindlegen { return "MOBI needs Kindle Previewer 4." }
         if c.pendingCount == 0 {
-            if c.selectedDevices == [.basic] || c.selectedDevices == [.scribe] || c.selectedDevices == [.basic, .scribe] {
+            if c.selectedDevices.allSatisfy(\.zooms) {
                 return c.format == "epub" ? "All done. Send the books with Send to Kindle."
                                           : "All done. Copy the books to your Kindle's documents folder."
             }
