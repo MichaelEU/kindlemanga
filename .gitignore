@@ -1,0 +1,17 @@
+# Build output
+MangaPanelView/build/
+
+# Converted books and test output (contain manga pages; never commit)
+out/
+*.epub
+*.mobi
+*.cbz
+*.cbr
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# macOS
+.DS_Store
