@@ -168,8 +168,8 @@ The window has two sides: **settings** on the left and the **queue** on the righ
    as you like at once. Other ways to add them:
    - Click **Add…** and hold ⌘ to pick several.
    - Drop them on the app's Dock icon.
-2. **Pick your devices** from the *Devices* menu under *Make books for*. You can tick several,
-   and each device gets its own set of books, sized for its screen.
+2. **Pick your device** from the menu under *Make books for*. The three devices you used most
+   recently are listed at the top under *Recently used*, and the app remembers your last choice.
 3. Click **Convert N Titles**.
 
 Titles are converted **one at a time, top to bottom**. The bottom bar shows overall progress
@@ -266,15 +266,15 @@ and phone or tablet comic apps. Each page is one panel.
 
 | Setting | What it does |
 |---|---|
-| **Devices** | Which devices to build for. Tick one or more; see [Supported devices](#supported-devices). |
+| **Make books for** | The device to build for; see [Supported devices](#supported-devices). Your three most recent devices are at the top of the menu. |
 | **Reading direction** | *Right to left* for manga, *Left to right* for Western comics. Controls panel order and page turns. |
 | **Show complete view first** | Leaves each chapter's first page (usually the cover) as a plain full page, not zoomed or split into panels. |
 | **Show complete view after** | The same for the last page (usually scanlator credits). |
-| **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is ticked. |
+| **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is chosen. |
 | **Show whole page before its panels** | One-panel-per-page devices: show each full page first as an overview, then its panels. |
 | **Turn wide panels sideways** | One-panel-per-page devices: rotate wide panels 90° when that makes them noticeably bigger. Turn the reader to read them. |
-| **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown when any Kindle is ticked; older Kindles should use MOBI. |
-| **Save to** | Where the books go. Each device gets a subfolder. |
+| **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown for Kindles; older Kindles should use MOBI. |
+| **Save to** | Where the books go, in a subfolder named after the device. Switching devices never mixes their books. |
 | **Chapters at once** | How many chapters of the current title are converted in parallel. 2 is a good default; raise it on a fast Mac. |
 
 ---

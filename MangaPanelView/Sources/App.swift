@@ -223,7 +223,13 @@ final class Converter: ObservableObject {
 
     // Settings (remembered between launches)
     @Published var output: URL { didSet { defaults.set(output.path, forKey: "output") } }
-    @Published var devices: Set<Device> { didSet { defaults.set(devices.map(\.rawValue), forKey: "devices") } }
+    @Published var device: Device {
+        didSet {
+            defaults.set(device.rawValue, forKey: "device")
+            recentDevices = Array(([device] + recentDevices.filter { $0 != device }).prefix(3))
+        }
+    }
+    @Published var recentDevices: [Device] { didSet { defaults.set(recentDevices.map(\.rawValue), forKey: "recentDevices") } }
     @Published var rightToLeft: Bool { didSet { defaults.set(rightToLeft, forKey: "rtl") } }
     @Published var skipFirst: Int { didSet { defaults.set(skipFirst, forKey: "skipFirst") } }
     @Published var skipLast: Int { didSet { defaults.set(skipLast, forKey: "skipLast") } }
@@ -254,14 +260,14 @@ final class Converter: ObservableObject {
         output = d.string(forKey: "output").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Kindle Manga", isDirectory: true)
-        if let saved = d.stringArray(forKey: "devices") {
-            devices = Set(saved.compactMap(Device.init(rawValue:)))
-        } else {   // settings from before the device menu
-            var old: Set<Device> = []
-            if d.bool(forKey: "useBasic") { old.insert(.basic) }
-            if d.bool(forKey: "useScribe") { old.insert(.scribe) }
-            devices = old
-        }
+        // Earlier versions allowed several devices at once ("devices", or the "useBasic"/"useScribe" switches).
+        let earlier = (d.stringArray(forKey: "devices") ?? []).compactMap(Device.init(rawValue:))
+        let current = d.string(forKey: "device").flatMap(Device.init(rawValue:))
+            ?? Device.allCases.first(where: earlier.contains)
+            ?? (d.bool(forKey: "useScribe") ? .scribe : .basic)
+        device = current
+        let recents = (d.stringArray(forKey: "recentDevices") ?? []).compactMap(Device.init(rawValue:))
+        recentDevices = Array(([current] + (recents.isEmpty ? earlier : recents).filter { $0 != current }).prefix(3))
         pageFirst = d.bool(forKey: "pageFirst")
         rotateWide = d.bool(forKey: "rotateWide")
         xteinkFormat = d.string(forKey: "xteinkFormat") ?? "xtch"
@@ -277,14 +283,14 @@ final class Converter: ObservableObject {
         AppDelegate.pending = []
     }
 
-    var selectedDevices: [Device] { Device.allCases.filter(devices.contains) }
-    var anyKindle: Bool { devices.contains(where: \.isKindle) }
-    var anyPanels: Bool { devices.contains(where: { !$0.zooms }) }
+    var selectedDevices: [Device] { [device] }
+    var anyKindle: Bool { device.isKindle }
+    var anyPanels: Bool { !device.zooms }
     var needsKindlegen: Bool { anyKindle && format == "mobi" }
 
-    func binding(for device: Device) -> Binding<Bool> {
-        Binding(get: { self.devices.contains(device) },
-                set: { on in if on { self.devices.insert(device) } else { self.devices.remove(device) } })
+    /// A checkmarked menu item that selects `choice`.
+    func selection(_ choice: Device) -> Binding<Bool> {
+        Binding(get: { self.device == choice }, set: { _ in self.device = choice })
     }
 
     var hasKindlegen: Bool { FileManager.default.isExecutableFile(atPath: Self.kindlegen) }
@@ -619,40 +625,33 @@ struct SettingsPane: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Devices") {
-                    Menu {
-                        ForEach(DeviceGroup.allCases, id: \.self) { group in
-                            Section(group.title) {
-                                ForEach(Device.allCases.filter { $0.group == group }) { d in
-                                    Toggle(d.label, isOn: c.binding(for: d))
-                                }
+                Menu {
+                    Section("Recently used") {
+                        ForEach(c.recentDevices) { d in
+                            Toggle(d.label, isOn: c.selection(d))
+                        }
+                    }
+                    ForEach(DeviceGroup.allCases, id: \.self) { group in
+                        Section(group.title) {
+                            ForEach(Device.allCases.filter { $0.group == group }) { d in
+                                Toggle(d.label, isOn: c.selection(d))
                             }
                         }
-                    } label: {
-                        Text(devicesSummary)
                     }
-                    .fixedSize()
+                } label: {
+                    Label(c.device.label, systemImage: c.device.symbol)
                 }
-                ForEach(c.selectedDevices) { d in
-                    Label {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(d.label)
-                            Text(d.detail).font(.caption).foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: d.symbol)
-                    }
-                }
+                .help(c.device.label)
             } header: {
                 Text("Make books for")
             } footer: {
-                Text("Pick one or more. Each device gets its own folder, sized for its screen.")
+                Text("\(c.device.detail).\nBooks are sized for this screen and saved in a folder named after the device.")
                     .foregroundStyle(.secondary)
             }
 
             if c.anyPanels {
                 Section {
-                    if c.devices.contains(.x4) {
+                    if c.device == .x4 {
                         Picker("Xteink shades", selection: $c.xteinkFormat) {
                             Text("4 shades (XTCH)").tag("xtch")
                             Text("Black & white (XTC)").tag("xtc")
@@ -723,30 +722,18 @@ struct SettingsPane: View {
         .disabled(c.running)
     }
 
-    private var devicesSummary: String {
-        switch c.selectedDevices.count {
-        case 0: "Choose…"
-        case 1: c.selectedDevices[0].label
-        default: "\(c.selectedDevices.count) devices"
-        }
-    }
-
     private var deliveryTips: String {
-        var tips: [String] = []
-        if c.devices.contains(where: \.zooms) {
-            tips.append(c.format == "epub" ? "Kindle: send the EPUBs with the Send to Kindle app."
-                                           : "Kindle: copy the MOBIs over USB into the documents folder.")
+        switch c.device.group {
+        case .kindle:
+            c.format == "epub" ? "Send the EPUBs with the Send to Kindle app."
+                               : "Copy the MOBIs over USB into the Kindle's documents folder."
+        case .olderKindle: "Choose MOBI, then copy the books over USB into the Kindle's documents folder."
+        case .kobo: "Copy the CBZ files onto the Kobo over USB."
+        case .sony: "Copy the PDFs onto the Reader over USB."
+        case .other:
+            c.device == .x4 ? "Copy the .\(c.xteinkFormat) files onto the X4's microSD card and open them in CrossPoint."
+                            : "CBZ opens in most comic apps and readers."
         }
-        if c.devices.contains(where: { $0.group == .olderKindle }) {
-            tips.append("Older Kindles: choose MOBI and copy the books over USB into the documents folder.")
-        }
-        if c.devices.contains(where: { $0.group == .kobo }) {
-            tips.append("Kobo: copy the CBZ files onto the Kobo over USB.")
-        }
-        if c.devices.contains(.x4) { tips.append("Xteink X4: copy the .\(c.xteinkFormat) files onto its microSD card and open them in CrossPoint.") }
-        if c.devices.contains(where: { $0.group == .sony }) { tips.append("Sony Reader: copy the PDFs onto the Reader over USB.") }
-        if c.devices.contains(.generic) { tips.append("Other readers: CBZ opens in most comic apps.") }
-        return tips.joined(separator: "\n")
     }
 
     private func chooseOutput() {
@@ -1006,7 +993,6 @@ struct BottomBar: View {
 
     private var hint: String {
         if c.queue.isEmpty { return "Drag manga folders or .cbz files into the queue." }
-        if c.selectedDevices.isEmpty { return "Pick at least one device." }
         if c.needsKindlegen && !c.hasKindlegen { return "MOBI needs Kindle Previewer 4." }
         if c.pendingCount == 0 {
             if c.selectedDevices.allSatisfy(\.zooms) {
