@@ -30,6 +30,8 @@ enum Links {
     static let repo = URL(string: "https://github.com/MichaelEU/kindlemanga")!
     static let kumiko = URL(string: "https://github.com/njean42/kumiko")!
     static let kcc = URL(string: "https://github.com/ciromattia/kcc")!
+    static let xtcjs = URL(string: "https://github.com/varo6/xtcjs")!
+    static let crosspoint = URL(string: "https://github.com/crosspoint-reader/crosspoint-reader")!
     static let opencv = URL(string: "https://opencv.org")!
     static let numpy = URL(string: "https://numpy.org")!
     static let pillow = URL(string: "https://python-pillow.org")!
@@ -69,11 +71,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Model
 
+/// Raw values are the converter's `-d` device ids.
 enum Device: String, CaseIterable, Identifiable {
-    case basic, scribe
+    case basic, scribe, x4, prs950, generic
     var id: String { rawValue }
-    var label: String { self == .basic ? "Kindle" : "Kindle Scribe" }
-    var symbol: String { self == .basic ? "book.closed" : "pencil.and.scribble" }
+
+    var label: String {
+        switch self {
+        case .basic: "Kindle"
+        case .scribe: "Kindle Scribe"
+        case .x4: "Xteink X4"
+        case .prs950: "Sony PRS-950"
+        case .generic: "Other reader (CBZ)"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .basic: "book.closed"
+        case .scribe: "pencil.and.scribble"
+        case .x4: "rectangle.portrait"
+        case .prs950: "book"
+        case .generic: "square.stack"
+        }
+    }
+
+    /// Kindles zoom panel by panel inside the page; the others get one panel per page.
+    var isKindle: Bool { self == .basic || self == .scribe }
+
+    var detail: String {
+        switch self {
+        case .basic: "Panel zoom · 1072×1448"
+        case .scribe: "Panel zoom · 1860×2480"
+        case .x4: "One panel per page · XTCH · 480×800"
+        case .prs950: "One panel per page · PDF · 600×1024"
+        case .generic: "One panel per page · CBZ · 1264×1680"
+        }
+    }
 }
 
 struct Failure: Identifiable {
@@ -134,13 +168,15 @@ final class Converter: ObservableObject {
 
     // Settings (remembered between launches)
     @Published var output: URL { didSet { defaults.set(output.path, forKey: "output") } }
-    @Published var useBasic: Bool { didSet { defaults.set(useBasic, forKey: "useBasic") } }
-    @Published var useScribe: Bool { didSet { defaults.set(useScribe, forKey: "useScribe") } }
+    @Published var devices: Set<Device> { didSet { defaults.set(devices.map(\.rawValue), forKey: "devices") } }
     @Published var rightToLeft: Bool { didSet { defaults.set(rightToLeft, forKey: "rtl") } }
     @Published var skipFirst: Int { didSet { defaults.set(skipFirst, forKey: "skipFirst") } }
     @Published var skipLast: Int { didSet { defaults.set(skipLast, forKey: "skipLast") } }
     @Published var jobs: Int { didSet { defaults.set(jobs, forKey: "jobs") } }
-    @Published var format: String { didSet { defaults.set(format, forKey: "format") } }   // "epub" or "mobi"
+    @Published var format: String { didSet { defaults.set(format, forKey: "format") } }   // Kindle: "epub" or "mobi"
+    @Published var pageFirst: Bool { didSet { defaults.set(pageFirst, forKey: "pageFirst") } }
+    @Published var rotateWide: Bool { didSet { defaults.set(rotateWide, forKey: "rotateWide") } }
+    @Published var xteinkFormat: String { didSet { defaults.set(xteinkFormat, forKey: "xteinkFormat") } }  // "xtch" or "xtc"
 
     // Queue (unfinished titles are remembered between launches)
     @Published var queue: [QueueItem] = [] { didSet { saveQueue() } }
@@ -158,12 +194,22 @@ final class Converter: ObservableObject {
         engineDir = support.appendingPathComponent("Manga Panel View", isDirectory: true)
         let d = UserDefaults.standard
         d.register(defaults: ["useBasic": true, "useScribe": false, "rtl": true,
-                              "skipFirst": 1, "skipLast": 1, "jobs": 2, "format": "epub"])
+                              "skipFirst": 1, "skipLast": 1, "jobs": 2, "format": "epub",
+                              "pageFirst": false, "rotateWide": false, "xteinkFormat": "xtch"])
         output = d.string(forKey: "output").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Kindle Manga", isDirectory: true)
-        useBasic = d.bool(forKey: "useBasic")
-        useScribe = d.bool(forKey: "useScribe")
+        if let saved = d.stringArray(forKey: "devices") {
+            devices = Set(saved.compactMap(Device.init(rawValue:)))
+        } else {   // settings from before the device menu
+            var old: Set<Device> = []
+            if d.bool(forKey: "useBasic") { old.insert(.basic) }
+            if d.bool(forKey: "useScribe") { old.insert(.scribe) }
+            devices = old
+        }
+        pageFirst = d.bool(forKey: "pageFirst")
+        rotateWide = d.bool(forKey: "rotateWide")
+        xteinkFormat = d.string(forKey: "xteinkFormat") ?? "xtch"
         rightToLeft = d.bool(forKey: "rtl")
         skipFirst = d.integer(forKey: "skipFirst")
         skipLast = d.integer(forKey: "skipLast")
@@ -176,8 +222,14 @@ final class Converter: ObservableObject {
         AppDelegate.pending = []
     }
 
-    var selectedDevices: [Device] {
-        Device.allCases.filter { $0 == .basic ? useBasic : useScribe }
+    var selectedDevices: [Device] { Device.allCases.filter(devices.contains) }
+    var anyKindle: Bool { devices.contains(where: \.isKindle) }
+    var anyReader: Bool { devices.contains(where: { !$0.isKindle }) }
+    var needsKindlegen: Bool { anyKindle && format == "mobi" }
+
+    func binding(for device: Device) -> Binding<Bool> {
+        Binding(get: { self.devices.contains(device) },
+                set: { on in if on { self.devices.insert(device) } else { self.devices.remove(device) } })
     }
 
     var hasKindlegen: Bool { FileManager.default.isExecutableFile(atPath: Self.kindlegen) }
@@ -186,7 +238,7 @@ final class Converter: ObservableObject {
     var currentItem: QueueItem? { currentItemID.flatMap { id in queue.first { $0.id == id } } }
 
     var canStart: Bool {
-        !running && pendingCount > 0 && !selectedDevices.isEmpty && (format == "epub" || hasKindlegen)
+        !running && pendingCount > 0 && !selectedDevices.isEmpty && (!needsKindlegen || hasKindlegen)
     }
 
     /// 0...1 across every title in this run, including titles added while it runs.
@@ -328,7 +380,14 @@ final class Converter: ObservableObject {
                         "-d", device.rawValue,
                         "-o", output.appendingPathComponent(device.label).path,
                         "--skip-first", "\(skipFirst)", "--skip-last", "\(skipLast)",
-                        "-j", "\(jobs)", "--format", format]
+                        "-j", "\(jobs)"]
+            if device.isKindle {
+                args += ["--format", format]
+            } else {
+                if device == .x4 { args += ["--format", xteinkFormat] }
+                if pageFirst { args.append("--page-first") }
+                if rotateWide { args.append("--rotate-wide") }
+            }
             if !rightToLeft { args.append("--ltr") }
             let code = await run(python.path, args) { self.handle($0, device: device, id: id) }
             if code != 0 && !cancelled {
@@ -506,16 +565,56 @@ struct SettingsPane: View {
     var body: some View {
         Form {
             Section {
-                ForEach(Device.allCases) { d in
-                    Toggle(isOn: d == .basic ? $c.useBasic : $c.useScribe) {
-                        Label(d.label, systemImage: d.symbol)
+                LabeledContent("Devices") {
+                    Menu {
+                        Section("Kindle: zooms panel by panel") {
+                            ForEach(Device.allCases.filter(\.isKindle)) { d in
+                                Toggle(d.label, isOn: c.binding(for: d))
+                            }
+                        }
+                        Section("Other readers: one panel per page") {
+                            ForEach(Device.allCases.filter { !$0.isKindle }) { d in
+                                Toggle(d.label, isOn: c.binding(for: d))
+                            }
+                        }
+                    } label: {
+                        Text(devicesSummary)
+                    }
+                    .fixedSize()
+                }
+                ForEach(c.selectedDevices) { d in
+                    Label {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(d.label)
+                            Text(d.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: d.symbol)
                     }
                 }
             } header: {
                 Text("Make books for")
             } footer: {
-                Text("Each Kindle gets its own folder, sized for its screen.")
+                Text("Pick one or more. Each device gets its own folder, sized for its screen.")
                     .foregroundStyle(.secondary)
+            }
+
+            if c.anyReader {
+                Section {
+                    if c.devices.contains(.x4) {
+                        Picker("Xteink shades", selection: $c.xteinkFormat) {
+                            Text("4 shades (XTCH)").tag("xtch")
+                            Text("Black & white (XTC)").tag("xtc")
+                        }
+                    }
+                    Toggle("Show whole page before its panels", isOn: $c.pageFirst)
+                    Toggle("Turn wide panels sideways", isOn: $c.rotateWide)
+                } header: {
+                    Text("One panel per page")
+                } footer: {
+                    Text("For the Xteink X4, Sony and other readers. 4 shades keeps manga screentones; black & white files are half the size. Turning wide panels sideways makes them much bigger; rotate your reader to read them. Pages where the panels can't be found are shown whole.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -530,16 +629,18 @@ struct SettingsPane: View {
             } header: {
                 Text("Pages")
             } footer: {
-                Text("Shows a chapter's first page (usually the cover) and last page (usually scanlator credits) as a full page, without panel zoom.")
+                Text("Shows a chapter's first page (usually the cover) and last page (usually scanlator credits) as a full page, without zooming or splitting into panels.")
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Picker("Book format", selection: $c.format) {
-                    Text("EPUB").tag("epub")
-                    Text("MOBI").tag("mobi")
+                if c.anyKindle {
+                    Picker("Kindle format", selection: $c.format) {
+                        Text("EPUB").tag("epub")
+                        Text("MOBI").tag("mobi")
+                    }
                 }
-                if c.format == "mobi" && !c.hasKindlegen {
+                if c.needsKindlegen && !c.hasKindlegen {
                     HStack {
                         Label("Needs Kindle Previewer 4", systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
@@ -563,14 +664,32 @@ struct SettingsPane: View {
             } header: {
                 Text("Output")
             } footer: {
-                Text(c.format == "epub"
-                     ? "EPUB: send the books with the Send to Kindle app."
-                     : "MOBI: copy the books over USB into the Kindle's documents folder.")
+                Text(deliveryTips)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .disabled(c.running)
+    }
+
+    private var devicesSummary: String {
+        switch c.selectedDevices.count {
+        case 0: "Choose…"
+        case 1: c.selectedDevices[0].label
+        default: "\(c.selectedDevices.count) devices"
+        }
+    }
+
+    private var deliveryTips: String {
+        var tips: [String] = []
+        if c.anyKindle {
+            tips.append(c.format == "epub" ? "Kindle: send the EPUBs with the Send to Kindle app."
+                                           : "Kindle: copy the MOBIs over USB into the documents folder.")
+        }
+        if c.devices.contains(.x4) { tips.append("Xteink X4: copy the .\(c.xteinkFormat) files onto its microSD card and open them in CrossPoint.") }
+        if c.devices.contains(.prs950) { tips.append("Sony: copy the PDFs onto the Reader over USB.") }
+        if c.devices.contains(.generic) { tips.append("Other readers: CBZ opens in most comic apps.") }
+        return tips.joined(separator: "\n")
     }
 
     private func chooseOutput() {
@@ -830,11 +949,14 @@ struct BottomBar: View {
 
     private var hint: String {
         if c.queue.isEmpty { return "Drag manga folders or .cbz files into the queue." }
-        if c.selectedDevices.isEmpty { return "Pick at least one Kindle." }
-        if c.format == "mobi" && !c.hasKindlegen { return "MOBI needs Kindle Previewer 4." }
+        if c.selectedDevices.isEmpty { return "Pick at least one device." }
+        if c.needsKindlegen && !c.hasKindlegen { return "MOBI needs Kindle Previewer 4." }
         if c.pendingCount == 0 {
-            return c.format == "epub" ? "All done. Send the books with Send to Kindle."
-                                      : "All done. Copy the books to your Kindle's documents folder."
+            if c.selectedDevices == [.basic] || c.selectedDevices == [.scribe] || c.selectedDevices == [.basic, .scribe] {
+                return c.format == "epub" ? "All done. Send the books with Send to Kindle."
+                                          : "All done. Copy the books to your Kindle's documents folder."
+            }
+            return "All done. Your books are in the output folder."
         }
         return "\(c.pendingCount) title\(c.pendingCount == 1 ? "" : "s") ready to convert."
     }
@@ -866,7 +988,7 @@ struct AboutView: View {
                     .resizable().frame(width: 88, height: 88)
                 Text("Manga Panel View").font(.title2.bold())
                 Text("Version \(version)").font(.callout).foregroundStyle(.secondary)
-                Text("Panel-by-panel guided view for manga on Kindle.")
+                Text("Panel-by-panel manga for Kindle and other e-readers.")
                     .font(.callout).padding(.top, 2)
                 Link("github.com/MichaelEU/kindlemanga", destination: Links.repo).font(.callout)
             }
@@ -900,12 +1022,17 @@ struct AboutView: View {
                         LicenseNotice(text: kccNotice)
                     }
 
+                    Credit(title: "xtcjs", by: "varo6 and contributors", url: Links.xtcjs, license: "MIT",
+                           text: "Its XTC encoder confirmed how Xteink files are laid out.")
+                    Credit(title: "CrossPoint Reader", by: "CrossPoint Reader organization", url: Links.crosspoint, license: "MIT",
+                           text: "The open-source Xteink firmware. Its decoder showed exactly how 4-shade pages are read, so the files match what the reader expects.")
+
                     Credit(title: "OpenCV", url: Links.opencv, license: "Apache 2.0",
                            text: "Line and shape detection behind the panel finder.")
                     Credit(title: "NumPy", url: Links.numpy, license: "BSD 3-Clause",
                            text: "Image arrays for OpenCV.")
                     Credit(title: "Pillow", url: Links.pillow, license: "MIT-CMU",
-                           text: "Reads and resizes the pages, and drew this app's icon.")
+                           text: "Reads, resizes and dithers the pages, writes the PDFs, and drew this app's icon.")
                     Credit(title: "Requests", url: Links.requests, license: "Apache 2.0",
                            text: "Used by Kumiko's command line.")
                     Credit(title: "Amazon",

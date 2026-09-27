@@ -1,13 +1,19 @@
 # Manga Panel View
 
-A Mac app that turns manga `.cbz` chapters into Kindle books with **real panel-by-panel
-guided view**. You tap through a page one panel at a time, the way Amazon's own comics work.
+A Mac app that turns manga `.cbz` chapters into e-reader books that follow the **real panels**
+on each page:
+
+- **Kindle and Kindle Scribe:** panel-by-panel guided view. You tap through a page one panel at
+  a time, the way Amazon's own comics work.
+- **Xteink X4, Sony PRS-950 and other readers:** each panel becomes its own full-screen page, in
+  reading order, so small screens show one readable panel at a time.
 
 Tools like Kindle Comic Converter split every page into the same four quarters. That cuts
 panels in half and makes spreads unreadable. Manga Panel View finds the actual panels on each
-page, including slanted and irregular layouts, and zooms to each one in reading order.
+page, including slanted and irregular layouts, and shows each one in reading order.
 
-Tested on a Kindle (basic) and a Kindle Scribe.
+Tested on a Kindle (basic) and a Kindle Scribe. The Xteink X4 and Sony files were checked by
+decoding them on a Mac, the same way CrossPoint reads them, but haven't been tried on a device yet.
 
 ---
 
@@ -17,7 +23,7 @@ Tested on a Kindle (basic) and a Kindle Scribe.
 - [Requirements](#requirements)
 - [Setup](#setup)
 - [Using the app](#using-the-app)
-- [Getting books onto your Kindle](#getting-books-onto-your-kindle)
+- [Getting books onto your device](#getting-books-onto-your-device)
 - [Settings explained](#settings-explained)
 - [Command line](#command-line)
 - [Troubleshooting](#troubleshooting)
@@ -31,12 +37,27 @@ Tested on a Kindle (basic) and a Kindle Scribe.
 1. Each chapter's pages are extracted from the `.cbz` file.
 2. [Kumiko](https://github.com/njean42/kumiko) finds where the panels are on every page and
    puts them in reading order (right-to-left for manga).
-3. The pages are resized for your Kindle's screen, and each panel becomes a tap target
-   using Amazon's *region magnification* markup, the same mechanism Kindle's own comics use.
-4. The result is packaged as an EPUB (or MOBI) book, one book per chapter.
+3. Then it depends on the device:
+   - **Kindles:** the pages are resized for the screen, and each panel becomes a tap target
+     using Amazon's *region magnification* markup, the same mechanism Kindle's own comics use.
+     The result is an EPUB (or MOBI) book.
+   - **Other readers:** each panel is cropped out and enlarged to fill the screen, one panel per
+     page. The result is an XTCH/XTC file (Xteink), a PDF (Sony) or a CBZ (other readers).
+4. You get one book per chapter.
 
-Very small detections are ignored, and so are panels that already fill most of the page,
-because zooming in would gain nothing.
+Very small detections are ignored. Panels that already fill most of the page aren't zoomed or
+split, because it would gain nothing. On one-panel-per-page devices, a page whose panels cover
+less than about half of it is also shown whole first, so art outside the panels isn't lost.
+
+### Supported devices
+
+| Device | What you get | Format | Screen |
+|---|---|---|---|
+| Kindle | Panel zoom inside the page | EPUB or MOBI | 1072×1448 |
+| Kindle Scribe | Panel zoom inside the page | EPUB or MOBI | 1860×2480 |
+| Xteink X4 | One panel per page | XTCH (4 shades) or XTC (black & white) | 480×800 |
+| Sony PRS-950 | One panel per page | PDF | 600×1024 |
+| Other reader | One panel per page | CBZ | 1264×1680 |
 
 ---
 
@@ -105,8 +126,8 @@ The window has two sides: **settings** on the left and the **queue** on the righ
    as you like at once. Other ways to add them:
    - Click **Add…** and hold ⌘ to pick several.
    - Drop them on the app's Dock icon.
-2. **Pick your Kindle(s)** under *Make books for*. Each Kindle gets its own set of books,
-   sized for its screen.
+2. **Pick your devices** from the *Devices* menu under *Make books for*. You can tick several,
+   and each device gets its own set of books, sized for its screen.
 3. Click **Convert N Titles**.
 
 Titles are converted **one at a time, top to bottom**. The bottom bar shows overall progress
@@ -142,30 +163,50 @@ Any of these work:
 | A single `.cbz` file | One book, filed under the folder it came from |
 
 Books are named `Series - Chapter` so they're easy to tell apart in your Kindle library.
-By default they are saved to `~/Documents/Kindle Manga/<Kindle model>/<Series>/`.
+By default they are saved to `~/Documents/Kindle Manga/<Device>/<Series>/`.
 
 ---
 
-## Getting books onto your Kindle
+## Getting books onto your device
 
-### EPUB (default, recommended)
+### Kindle: EPUB (default, recommended)
 
 Send the `.epub` files with Amazon's **[Send to Kindle](https://www.amazon.com/sendtokindle)**
 app for Mac, or through the website. Amazon converts them for your Kindle and **keeps the
 panel zoom**.
 
-### MOBI
+### Kindle: MOBI
 
-Choose **MOBI** under *Book format* if you prefer copying files over USB. Copy the `.mobi`
+Choose **MOBI** under *Kindle format* if you prefer copying files over USB. Copy the `.mobi`
 files into the Kindle's `documents` folder. On a Mac, Amazon's USB File Transfer app or
 [OpenMTP](https://openmtp.ganeshrvel.com/) are the most reliable ways to do this.
 Newer Kindles can be picky about MOBI, so if yours won't open them, use EPUB.
 
-### Reading panel by panel
+### Kindle: reading panel by panel
 
 Open a converted chapter and tap into a panel. The Kindle zooms to it, and each tap or swipe
 moves to the next panel in reading order. On some models and firmware versions, panel view
 has to be switched on first in the **Aa** menu.
+
+### Xteink X4 (CrossPoint)
+
+Copy the `.xtch` (or `.xtc`) files onto the X4's microSD card and open them from the library in
+[CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader). These are Xteink's
+native pre-rendered formats, so pages turn fast. Each page turn shows the next panel.
+
+**4 shades (XTCH)** keeps manga screentones and gray shading. **Black & white (XTC)** files are
+half the size and use dithering for grays. Turning on *Turn wide panels sideways* is worth trying
+on the X4: its screen is narrow, so wide panels get much bigger when you turn the reader.
+
+### Sony PRS-950
+
+Connect the Reader over USB and copy the PDFs onto it. Each PDF page is one panel, sized to the
+Reader's 600×1024 screen.
+
+### Other readers
+
+The CBZ files open in most comic apps and readers, for example KOReader, Kobo with KOReader,
+and phone or tablet comic apps. Each page is one panel.
 
 ---
 
@@ -173,12 +214,15 @@ has to be switched on first in the **Aa** menu.
 
 | Setting | What it does |
 |---|---|
-| **Make books for** | Which Kindles to build for: **Kindle** (1072×1448) and/or **Kindle Scribe** (1860×2480). |
+| **Devices** | Which devices to build for. Tick one or more; see [Supported devices](#supported-devices). |
 | **Reading direction** | *Right to left* for manga, *Left to right* for Western comics. Controls panel order and page turns. |
-| **Show complete view first** | Leaves each chapter's first page (usually the cover) as a plain full page with no panel zoom. |
+| **Show complete view first** | Leaves each chapter's first page (usually the cover) as a plain full page, not zoomed or split into panels. |
 | **Show complete view after** | The same for the last page (usually scanlator credits). |
-| **Book format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). |
-| **Save to** | Where the books go. Each Kindle model gets a subfolder. |
+| **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is ticked. |
+| **Show whole page before its panels** | One-panel-per-page devices: show each full page first as an overview, then its panels. |
+| **Turn wide panels sideways** | One-panel-per-page devices: rotate wide panels 90° when that makes them noticeably bigger. Turn the reader to read them. |
+| **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown when a Kindle is ticked. |
+| **Save to** | Where the books go. Each device gets a subfolder. |
 | **Chapters at once** | How many chapters of the current title are converted in parallel. 2 is a good default; raise it on a fast Mac. |
 
 ---
@@ -197,9 +241,11 @@ PY=~/Library/Application\ Support/Manga\ Panel\ View/venv/bin/python
 
 | Option | Meaning |
 |---|---|
-| `-d basic` / `-d scribe` | Kindle model |
+| `-d basic` / `scribe` / `x4` / `prs950` / `generic` | Device |
 | `-o DIR` | Output folder |
-| `-f epub` / `-f mobi` | Book format (default `epub`) |
+| `-f FORMAT` | Kindles: `epub` (default) or `mobi`. Other devices: `xtch`, `xtc`, `pdf` or `cbz` (defaults: X4 `xtch`, Sony `pdf`, other `cbz`) |
+| `--page-first` | One-panel-per-page devices: show each whole page before its panels |
+| `--rotate-wide` | One-panel-per-page devices: turn wide panels sideways when that makes them bigger |
 | `--ltr` | Left-to-right comics instead of manga |
 | `--skip-first N` / `--skip-last N` | Leave the first/last N pages of each chapter without panel zoom |
 | `--nozoom 1,17,18` | Single file only: specific pages to leave without zoom |
@@ -219,8 +265,13 @@ Switch *Book format* to **EPUB** and use Send to Kindle.
 
 **Two panels are zoomed together, or a panel is missed.**
 The panel detector looks for panel borders. It sometimes merges small inset panels into a
-neighbouring big panel, and panels without borders may be skipped. The full page is always
-still readable, so these pages just get fewer zoom stops.
+neighbouring big panel, and panels without borders may be skipped. On Kindles the full page
+is always still readable, so these pages just get fewer zoom stops. On one-panel-per-page
+devices, merged panels show up together on one screen. Turn on *Show whole page before its
+panels* if you want the full page as a fallback everywhere.
+
+**Wide panels are tiny on the Xteink X4.**
+Turn on *Turn wide panels sideways*, and turn the reader when one of those panels comes up.
 
 **A credits page gets panel zoom.**
 Some scanlation groups add two or more credit pages. The *Show complete view* switches cover
@@ -246,7 +297,7 @@ Setup will run again.
 MangaPanelView/
 ├── Sources/App.swift          SwiftUI app: queue, settings, progress, engine setup
 ├── Resources/
-│   ├── panelview.py           Converter: panel detection → Kindle EPUB/MOBI
+│   ├── panelview.py           Converter: panel detection → EPUB/MOBI, XTCH/XTC, PDF, CBZ
 │   └── kumiko/                Bundled Kumiko panel detector (AGPL-3.0, unmodified)
 ├── make_icon.py               Draws the app icon
 └── build.sh                   Builds the .app with the Command Line Tools
@@ -255,8 +306,8 @@ MangaPanelView/
 The app copies `panelview.py` and `kumiko/` into its Application Support folder on every
 launch, so a rebuilt app always runs the latest converter.
 
-To support another Kindle model, add its screen size to `DEVICES` in `panelview.py` and to
-the `Device` enum in `App.swift`.
+To support another device, add a profile to `DEVICES` in `panelview.py` (screen size, `zoom`
+or `panels` mode, default format) and a matching case to the `Device` enum in `App.swift`.
 
 ---
 
@@ -270,6 +321,8 @@ This project stands on other people's work. Full credits and license notices are
   (AGPL-3.0, bundled unmodified).
 - **[Kindle Comic Converter (KCC)](https://github.com/ciromattia/kcc)** showed how to write
   Kindle panel-view markup and fixed-layout comic metadata (ISC).
+- **[xtcjs](https://github.com/varo6/xtcjs)** and **[CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader)**
+  showed exactly how Xteink XTC/XTCH files are laid out and read (both MIT).
 - **OpenCV, NumPy, Pillow and Requests** power the image processing.
 - **Amazon's** Kindle Previewer / kindlegen build the MOBI files.
 - **Claude** (Anthropic) co-wrote this project with me in Claude Code.

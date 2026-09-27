@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Convert a manga .cbz into a Kindle book with real per-panel guided view.
+"""Convert manga .cbz chapters into e-reader books that follow the real panels.
 
-Panels are detected with Kumiko (OpenCV). For each panel the book gets a tap
-target (Amazon "region magnification") that zooms exactly to that panel, in
-reading order, instead of KCC's fixed four-corner split.
+Panels are detected with Kumiko (OpenCV), then, depending on the device:
+  - Kindles ("zoom" mode): each panel becomes a tap target (Amazon "region
+    magnification") that zooms to exactly that panel, in reading order,
+    instead of KCC's fixed four-corner split.
+  - Other readers ("panels" mode): each panel becomes its own full-screen page,
+    in reading order, written as XTC (Xteink), PDF (Sony) or CBZ.
 
 Usage:
-  panelview.py chapter.cbz -d basic|scribe [--ltr] [--nozoom 1,18] [-o outdir]
+  panelview.py <folder-or-cbz> -d basic|scribe|x4|prs950|generic [-o outdir] [--ltr]
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile, uuid, zipfile
+import argparse, hashlib, json, os, shutil, struct, subprocess, sys, tempfile, uuid, zipfile
 from html import escape
 from pathlib import Path
 from PIL import Image
@@ -18,10 +21,19 @@ KUMIKO = Path(os.environ.get("KUMIKO", HERE / "kumiko" / "kumiko"))
 KINDLEGEN = os.environ.get(
     "KINDLEGEN",
     "/Applications/Kindle Previewer 4.app/Contents/Resources/KFXGen/bin/kindlegen")
-DEVICES = {"basic": (1072, 1448), "scribe": (1860, 2480)}
+# mode "zoom": Kindle guided view inside the page; "panels": one panel per page
+DEVICES = {
+    "basic":   dict(label="Kindle",             size=(1072, 1448), mode="zoom",   fmt="epub"),
+    "scribe":  dict(label="Kindle Scribe",      size=(1860, 2480), mode="zoom",   fmt="epub"),
+    "x4":      dict(label="Xteink X4",          size=(480, 800),   mode="panels", fmt="xtch"),
+    "prs950":  dict(label="Sony PRS-950",       size=(600, 1024),  mode="panels", fmt="pdf"),
+    "generic": dict(label="Other reader (CBZ)", size=(1264, 1680), mode="panels", fmt="cbz"),
+}
+FORMATS = {"zoom": {"epub", "mobi"}, "panels": {"xtch", "xtc", "pdf", "cbz"}}
 HQ = 1.5           # stored image resolution relative to screen
 MIN_AREA = 0.012   # ignore detected boxes smaller than this fraction of the page
 MAX_AREA = 0.80    # a panel this big gains nothing from zooming
+MIN_COVERAGE = 0.45  # panels covering less of the page than this: show the whole page too
 
 
 def natural_images(d):
@@ -48,6 +60,87 @@ def fit_page(src, W, H):
     ox, oy = (CW - nw) // 2, (CH - nh) // 2
     canvas.paste(im, (ox, oy))
     return canvas, s, ox, oy
+
+
+def fit_screen(im, W, H, rotate_wide=False):
+    """Scale an image as large as it fits on a WxH screen, centred on white."""
+    if rotate_wide and W < H and im.width > im.height:
+        # Turn wide panels sideways when that makes them noticeably bigger.
+        if min(W / im.height, H / im.width) > 1.2 * min(W / im.width, H / im.height):
+            im = im.rotate(-90, expand=True)
+    s = min(W / im.width, H / im.height)
+    im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.LANCZOS)
+    screen = Image.new("L", (W, H), 255)
+    screen.paste(im, ((W - im.width) // 2, (H - im.height) // 2))
+    return screen
+
+
+def panel_screens(src, boxes, W, H, whole, page_first, rotate_wide):
+    """Screens for one source page: the whole page and/or each panel, in reading order."""
+    im = Image.open(src).convert("L")
+    if whole or not boxes:
+        return [fit_screen(im, W, H, rotate_wide)]
+    screens = [fit_screen(im, W, H, rotate_wide)] if page_first else []
+    for (x, y, w, h) in boxes:
+        pad = round(0.015 * max(w, h))                 # a little breathing room
+        box = (max(0, x - pad), max(0, y - pad), min(im.width, x + w + pad), min(im.height, y + h + pad))
+        screens.append(fit_screen(im.crop(box), W, H, rotate_wide))
+    return screens
+
+
+def xtc_page(screen, gray):
+    """One XTG (1-bit) or XTH (4-shade) page, laid out the way CrossPoint and the Xteink firmware read them."""
+    import numpy as np
+    w, h = screen.size
+    if gray:
+        # Dither to 4 shades, then map to XTH values: 0 white, 1 dark grey, 2 light grey, 3 black.
+        palette = Image.new("P", (1, 1))
+        palette.putpalette([v for g in (255, 170, 85, 0) for v in (g, g, g)] + [0] * 756)
+        shade = np.asarray(screen.convert("RGB").quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG))
+        value = np.array([0, 2, 1, 3], dtype=np.uint8)[shade]
+        # Two bit planes (high bit first), each scanned column by column from the right edge,
+        # 8 vertical pixels per byte, topmost pixel in the most significant bit.
+        cols = value[:, ::-1].T
+        planes = [np.packbits((cols >> bit) & 1, axis=1) for bit in (1, 0)]
+        data = b"".join(plane.tobytes() for plane in planes)
+        magic = b"XTH\0"
+    else:
+        # Rows packed MSB-first and padded to whole bytes; a set bit is a white pixel.
+        data = np.packbits(np.asarray(screen.convert("1"), dtype=bool), axis=1).tobytes()  # Floyd-Steinberg
+        magic = b"XTG\0"
+    head = struct.pack("<4sHHBBI8s", magic, w, h, 0, 0, len(data), hashlib.md5(data).digest()[:8])
+    return head + data, w, h
+
+
+def write_xtc(screens, dest, gray=False):
+    """Xteink's native container: XTC (1-bit pages) or XTCH (4-shade pages), no metadata or chapters."""
+    pages = [xtc_page(screen, gray) for screen in screens]
+    index_offset = 56
+    offset = data_offset = index_offset + 16 * len(pages)
+    out = [struct.pack("<4sHH8xQQQQQ", b"XTCH" if gray else b"XTC\0", 1, len(pages),
+                       0, index_offset, data_offset, 0, 0)]
+    for blob, w, h in pages:
+        out.append(struct.pack("<QIHH", offset, len(blob), w, h))
+        offset += len(blob)
+    out += [blob for blob, _, _ in pages]
+    Path(dest).write_bytes(b"".join(out))
+
+
+def write_pdf(screens, dest):
+    screens[0].save(dest, "PDF", save_all=True, append_images=screens[1:], resolution=170)
+
+
+def write_cbz(screens, dest):
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_STORED) as z:
+        for i, screen in enumerate(screens, 1):
+            path = Path(dest).with_name(f"{i:04d}.jpg")
+            screen.save(path, quality=85)
+            z.write(path, path.name)
+            path.unlink()
+
+
+WRITERS = {"xtc": write_xtc, "xtch": lambda screens, dest: write_xtc(screens, dest, gray=True),
+           "pdf": write_pdf, "cbz": write_cbz}
 
 
 def page_xhtml(name, W, H, panels, n):
@@ -171,8 +264,11 @@ def zip_epub(root, dest):
                 z.write(p, p.relative_to(root), compress_type=zipfile.ZIP_DEFLATED)
 
 
-def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip_first=0, skip_last=0, fmt="epub"):
-    W, H = DEVICES[device]
+def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip_first=0, skip_last=0,
+            fmt=None, page_first=False, rotate_wide=False):
+    profile = DEVICES[device]
+    W, H = profile["size"]
+    fmt = fmt or profile["fmt"]
     cbz = Path(cbz)
     title = title or cbz.stem
     outdir = Path(outdir); outdir.mkdir(parents=True, exist_ok=True)
@@ -186,6 +282,24 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
         for i, p in enumerate(pages, 1):
             Image.open(p).convert("RGB").save(jpg / f"{i:04d}.jpg", quality=95)
         info = detect_panels(jpg, rtl)
+        safe = title.replace("/", "-")
+        if profile["mode"] == "panels":
+            screens = []
+            for i, p in enumerate(pages, 1):
+                k = info[f"{i:04d}.jpg"]
+                area = k["size"][0] * k["size"][1]
+                boxes = [b for b in k["panels"] if b[2] * b[3] >= MIN_AREA * area]
+                if len(boxes) == 1 and boxes[0][2] * boxes[0][3] > MAX_AREA * area:
+                    boxes = []                          # one full-page panel: just show the page
+                coverage = sum(b[2] * b[3] for b in boxes) / area
+                whole = i in nozoom or i <= skip_first or i > len(pages) - skip_last
+                screens += panel_screens(p, boxes, W, H, whole, page_first or coverage < MIN_COVERAGE, rotate_wide)
+            result = tmp / f"book.{fmt}"
+            WRITERS[fmt](screens, result)
+            part = outdir / f".{safe}.{fmt}.part"
+            shutil.copy(result, part)
+            os.replace(part, outdir / f"{safe}.{fmt}")
+            return f"{title}: {len(pages)} pages -> {len(screens)} screens"
         (book / "OEBPS" / "Images").mkdir(parents=True)
         (book / "OEBPS" / "Text").mkdir()
         (book / "OEBPS" / "Text" / "style.css").write_text(CSS)
@@ -210,7 +324,6 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
         build_epub(book, title, names, W, H, rtl)
         epub = tmp / f"{title}.epub"
         zip_epub(book, epub)
-        safe = title.replace("/", "-")
         if fmt == "epub":
             result = epub
         else:
@@ -234,7 +347,8 @@ def _job(args):
     try:
         return True, cbz, convert(
             cbz, opts["device"], opts["rtl"], opts["nozoom"], dest_dir, opts["keep_epub"], False,
-            title=title, skip_first=opts["skip_first"], skip_last=opts["skip_last"], fmt=opts["fmt"])
+            title=title, skip_first=opts["skip_first"], skip_last=opts["skip_last"], fmt=opts["fmt"],
+            page_first=opts["page_first"], rotate_wide=opts["rotate_wide"])
     except BaseException as e:  # keep going on a bad file
         return False, cbz, f"{type(e).__name__}: {e}"
 
@@ -249,8 +363,14 @@ def main():
     ap.add_argument("--skip-last", type=int, default=0, help="leave the last N pages of each chapter without zoom")
     ap.add_argument("-o", "--out", default="out")
     ap.add_argument("-j", "--jobs", type=int, default=2, help="chapters converted in parallel (folder mode)")
-    ap.add_argument("-f", "--format", choices=["epub", "mobi"], default="epub",
-                    help="epub for Send to Kindle, mobi for copying over USB (needs Kindle Previewer)")
+    ap.add_argument("-f", "--format", choices=["epub", "mobi", "xtch", "xtc", "pdf", "cbz"],
+                    help="Kindles: epub (default, Send to Kindle) or mobi (USB, needs Kindle Previewer); "
+                         "other readers: xtch (Xteink, 4 shades), xtc (Xteink, black and white), pdf or cbz "
+                         "(default depends on the device)")
+    ap.add_argument("--page-first", action="store_true",
+                    help="one-panel-per-page devices: show each whole page before its panels")
+    ap.add_argument("--rotate-wide", action="store_true",
+                    help="one-panel-per-page devices: turn wide panels sideways to make them bigger")
     ap.add_argument("--keep-epub", action="store_true", help="with --format mobi, also keep the epub")
     ap.add_argument("--redo", action="store_true", help="re-convert even if the book already exists")
     a = ap.parse_args()
@@ -258,8 +378,13 @@ def main():
         os.setpgrp()  # own process group, so a GUI "Stop" can end every worker at once
     except OSError:
         pass
+    profile = DEVICES[a.device]
+    fmt = a.format or profile["fmt"]
+    if fmt not in FORMATS[profile["mode"]]:
+        ap.error(f"{profile['label']} can use: {', '.join(sorted(FORMATS[profile['mode']]))}")
     opts = dict(device=a.device, rtl=not a.ltr, nozoom={int(x) for x in a.nozoom.split(",") if x},
-                keep_epub=a.keep_epub, skip_first=a.skip_first, skip_last=a.skip_last, fmt=a.format)
+                keep_epub=a.keep_epub, skip_first=a.skip_first, skip_last=a.skip_last, fmt=fmt,
+                page_first=a.page_first, rotate_wide=a.rotate_wide)
     src, out = Path(a.input), Path(a.out)
     if src.is_file():
         candidates, src = [src], src.parent
@@ -274,7 +399,7 @@ def main():
         series = rel.parent if rel.parent.parts else Path(src.name)
         dest = out / series
         title = f"{series.name} - {cbz.stem}"
-        if (dest / f'{title.replace("/", "-")}.{a.format}').exists() and not a.redo:
+        if (dest / f'{title.replace("/", "-")}.{fmt}').exists() and not a.redo:
             skipped += 1
             continue
         jobs.append((cbz, dest, title, opts))

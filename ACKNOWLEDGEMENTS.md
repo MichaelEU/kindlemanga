@@ -63,6 +63,25 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ---
 
+## xtcjs and CrossPoint Reader: Xteink file formats
+
+The Xteink X4 output (`.xtch` / `.xtc`) is written by this project's own code, but getting the
+details right came from studying two open-source projects:
+
+- **[xtcjs](https://github.com/varo6/xtcjs)** by varo6 and contributors (MIT). A browser-based
+  CBZ-to-XTC converter. Its encoder confirmed how the container is laid out and that a set bit
+  in a black-and-white page means white.
+- **[CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader)** by the
+  CrossPoint Reader organization (MIT). The open-source X4 firmware. Its decoder showed exactly
+  how the 4-shade pages are read (plane order, column scan and shade values), so the files are
+  written the way the reader expects.
+- The community **[XTC/XTH format notes](https://gist.github.com/CrazyCoder/b125f26d6987c0620058249f59f1327d)**
+  by CrazyCoder documented the byte layout.
+
+No code from these projects is included here.
+
+---
+
 ## Libraries
 
 These are installed into the app's private Python environment on first launch. They are not
@@ -71,8 +90,8 @@ bundled in this repository.
 | Library | Used for | License |
 |---|---|---|
 | [OpenCV](https://opencv.org/) (`opencv-python-headless`) | Line and contour detection inside Kumiko | Apache 2.0 |
-| [NumPy](https://numpy.org/) | Image arrays for OpenCV | BSD 3-Clause |
-| [Pillow](https://python-pillow.org/) | Reading WebP/JPEG/PNG pages, resizing, drawing the app icon | MIT-CMU (HPND) |
+| [NumPy](https://numpy.org/) | Image arrays for OpenCV, packing Xteink pages into bits | BSD 3-Clause |
+| [Pillow](https://python-pillow.org/) | Reading WebP/JPEG/PNG pages, resizing, dithering, writing PDFs, drawing the app icon | MIT-CMU (HPND) |
 | [Requests](https://requests.readthedocs.io/) | Required by Kumiko's command line | Apache 2.0 |
 
 The app itself uses Apple's SwiftUI and AppKit frameworks and SF Symbols icons, which ship
@@ -99,7 +118,8 @@ This project was designed and written together with **Claude**, Anthropic's AI a
 in [Claude Code](https://claude.com/claude-code). Claude contributed:
 
 - the panel-detection pipeline and the EPUB/MOBI generator,
-- the SwiftUI Mac app, the queue, the build script, and the app icon,
+- the SwiftUI Mac app, the queue, the device menu, the build script, and the app icon,
+- the one-panel-per-page mode and the Xteink XTCH/XTC, PDF and CBZ writers,
 - testing on real chapters, and this documentation.
 
 Hi from Claude! Thanks for the fun project. I hope your reading gets a little easier on
