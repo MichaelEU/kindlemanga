@@ -268,8 +268,8 @@ and phone or tablet comic apps. Each page is one panel.
 |---|---|
 | **Make books for** | The device to build for; see [Supported devices](#supported-devices). Your three most recent devices are at the top of the menu. |
 | **Reading direction** | *Right to left* for manga, *Left to right* for Western comics. Controls panel order and page turns. |
-| **Show complete view first** | Leaves each chapter's first page (usually the cover) as a plain full page, not zoomed or split into panels. |
-| **Show complete view after** | The same for the last page (usually scanlator credits). |
+| **Show as a complete page: Cover** | Leaves each chapter's first page (usually the cover) as a plain full page, not zoomed or split into panels. |
+| **Show as a complete page: Credits** | The same for the last page (usually scanlator credits). |
 | **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is chosen. |
 | **Show whole page before its panels** | One-panel-per-page devices: show each full page first as an overview, then its panels. |
 | **Turn wide panels sideways** | One-panel-per-page devices: rotate wide panels 90° when that makes them noticeably bigger. Turn the reader to read them. |
@@ -326,7 +326,7 @@ panels* if you want the full page as a fallback everywhere.
 Turn on *Turn wide panels sideways*, and turn the reader when one of those panels comes up.
 
 **A credits page gets panel zoom.**
-Some scanlation groups add two or more credit pages. The *Show complete view* switches cover
+Some scanlation groups add two or more credit pages. The *Cover* and *Credits* switches cover
 one page at each end. For more, use `--skip-first` / `--skip-last` on the command line.
 
 **Setup fails.**

@@ -672,15 +672,18 @@ struct SettingsPane: View {
                     Text("Right to left").tag(true)
                     Text("Left to right").tag(false)
                 }
-                Toggle("Show complete view first", isOn: Binding(
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show as a complete page")
+                    Text("No zooming or splitting into panels. The cover is each chapter's first page; scanlator credits are usually the last.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Toggle("Cover", isOn: Binding(
                     get: { c.skipFirst > 0 }, set: { c.skipFirst = $0 ? 1 : 0 }))
-                Toggle("Show complete view after", isOn: Binding(
+                Toggle("Credits", isOn: Binding(
                     get: { c.skipLast > 0 }, set: { c.skipLast = $0 ? 1 : 0 }))
             } header: {
                 Text("Pages")
-            } footer: {
-                Text("Shows a chapter's first page (usually the cover) and last page (usually scanlator credits) as a full page, without zooming or splitting into panels.")
-                    .foregroundStyle(.secondary)
             }
 
             Section {
