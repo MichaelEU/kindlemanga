@@ -65,6 +65,7 @@ HQ = 1.5           # stored image resolution relative to screen
 MIN_AREA = 0.012   # ignore detected boxes smaller than this fraction of the page
 MAX_AREA = 0.80    # a panel this big gains nothing from zooming
 MIN_COVERAGE = 0.45  # panels covering less of the page than this: show the whole page too
+COLOUR_PAGE = 0.01   # more colourful pixels than this: a cover or credits page, not a black-and-white story page
 
 
 def natural_images(d):
@@ -100,14 +101,30 @@ def fit_page(src, W, H, color=False):
 def fit_screen(im, W, H, rotate_wide=False):
     """Scale an image as large as it fits on a WxH screen, centred on white."""
     if rotate_wide and W < H and im.width > im.height:
-        # Turn wide panels sideways when that makes them noticeably bigger.
-        if min(W / im.height, H / im.width) > 1.2 * min(W / im.width, H / im.height):
-            im = im.rotate(-90, expand=True)
+        # Wider than tall on a portrait screen: turn it a quarter turn clockwise so it fills
+        # the screen; the reader turns the device a quarter turn to the left to read it.
+        im = im.rotate(-90, expand=True)
     s = min(W / im.width, H / im.height)
     im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.LANCZOS)
     screen = Image.new(im.mode, (W, H), "white")
     screen.paste(im, ((W - im.width) // 2, (H - im.height) // 2))
     return screen
+
+
+def is_edge_extra(src, k):
+    """Does a first/last page look like a cover or credits page rather than a story page?
+
+    Story pages have a multi-panel layout and are black and white. Scanlator covers and
+    credits are usually one image or in colour, even when their boxes look like panels.
+    """
+    import numpy as np
+    area = k["size"][0] * k["size"][1]
+    if sum(1 for b in k["panels"] if b[2] * b[3] >= MIN_AREA * area) < 2:
+        return True
+    im = Image.open(src).convert("RGB")
+    im.thumbnail((200, 200))
+    rgb = np.asarray(im, dtype=np.int16)
+    return ((rgb.max(axis=2) - rgb.min(axis=2)) > 40).mean() > COLOUR_PAGE
 
 
 def panel_screens(src, boxes, W, H, whole, page_first, rotate_wide, color=False):
@@ -360,7 +377,8 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
                 if len(boxes) == 1 and boxes[0][2] * boxes[0][3] > MAX_AREA * area:
                     boxes = []                          # one full-page panel: just show the page
                 coverage = sum(b[2] * b[3] for b in boxes) / area
-                whole = i in nozoom or i <= skip_first or i > len(pages) - skip_last
+                edge = i <= skip_first or i > len(pages) - skip_last
+                whole = i in nozoom or (edge and is_edge_extra(p, k))
                 screens += panel_screens(p, boxes, W, H, whole, page_first or coverage < MIN_COVERAGE,
                                          rotate_wide, profile["color"])
             result = tmp / f"book.{fmt}"
@@ -385,7 +403,8 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
             panels = []
             k = info[f"{name}.jpg"]
             iw, ih = k["size"]
-            if i not in nozoom and i > skip_first and i <= len(pages) - skip_last:
+            edge = i <= skip_first or i > len(pages) - skip_last
+            if i not in nozoom and not (edge and is_edge_extra(p, k)):
                 for (x, y, w, h) in k["panels"]:
                     if MIN_AREA <= (w * h) / (iw * ih) <= MAX_AREA:
                         # source px -> screen (W x H) px
@@ -427,8 +446,10 @@ def main():
     ap.add_argument("-d", "--device", choices=DEVICES, default="basic")
     ap.add_argument("--ltr", action="store_true", help="left-to-right (western) instead of manga right-to-left")
     ap.add_argument("--nozoom", default="", help="single file only: 1-based pages to leave without panel zoom")
-    ap.add_argument("--skip-first", type=int, default=0, help="leave the first N pages of each chapter without zoom")
-    ap.add_argument("--skip-last", type=int, default=0, help="leave the last N pages of each chapter without zoom")
+    ap.add_argument("--skip-first", type=int, default=0,
+                    help="keep the first N pages of each chapter whole when they look like a cover (no panel layout, or in colour)")
+    ap.add_argument("--skip-last", type=int, default=0,
+                    help="keep the last N pages of each chapter whole when they look like credits (no panel layout, or in colour)")
     ap.add_argument("-o", "--out", default="out")
     ap.add_argument("-j", "--jobs", type=int, default=2, help="chapters converted in parallel (folder mode)")
     ap.add_argument("-f", "--format", choices=["epub", "mobi", "xtch", "xtc", "pdf", "cbz"],
@@ -438,7 +459,7 @@ def main():
     ap.add_argument("--page-first", action="store_true",
                     help="one-panel-per-page devices: show each whole page before its panels")
     ap.add_argument("--rotate-wide", action="store_true",
-                    help="one-panel-per-page devices: turn wide panels sideways to make them bigger")
+                    help="one-panel-per-page devices: rotate panels (and spreads) that are wider than tall")
     ap.add_argument("--keep-epub", action="store_true", help="with --format mobi, also keep the epub")
     ap.add_argument("--redo", action="store_true", help="re-convert even if the book already exists")
     a = ap.parse_args()

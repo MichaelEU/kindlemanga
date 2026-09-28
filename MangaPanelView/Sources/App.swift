@@ -256,7 +256,7 @@ final class Converter: ObservableObject {
         let d = UserDefaults.standard
         d.register(defaults: ["useBasic": true, "useScribe": false, "rtl": true,
                               "skipFirst": 1, "skipLast": 1, "jobs": 2, "format": "epub",
-                              "pageFirst": false, "rotateWide": false, "xteinkFormat": "xtch"])
+                              "pageFirst": false, "rotateWide": true, "xteinkFormat": "xtch"])
         output = d.string(forKey: "output").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Kindle Manga", isDirectory: true)
@@ -662,7 +662,7 @@ struct SettingsPane: View {
                 } header: {
                     Text("One panel per page")
                 } footer: {
-                    Text("For older Kindles, Kobos, the Xteink X4, Sony and other readers. 4 shades keeps manga screentones; black & white files are half the size. Turning wide panels sideways makes them much bigger; rotate your reader to read them. Pages where the panels can't be found are shown whole.")
+                    Text("For older Kindles, Kobos, the Xteink X4, Sony and other readers. 4 shades keeps manga screentones; black & white files are half the size. Panels wider than they are tall are turned sideways so they fill the screen; turn your reader a quarter turn to the left to read them. Pages where the panels can't be found are shown whole.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -674,7 +674,7 @@ struct SettingsPane: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show as a complete page")
-                    Text("No zooming or splitting into panels. The cover is each chapter's first page; scanlator credits are usually the last.")
+                    Text("A chapter's first and last pages are kept whole, without zooming or splitting, when they look like a cover or credits: in colour, or without a panel layout. Story pages are always split.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

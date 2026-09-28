@@ -247,8 +247,9 @@ Copy the `.xtch` (or `.xtc`) files onto the X4's microSD card and open them from
 native pre-rendered formats, so pages turn fast. Each page turn shows the next panel.
 
 **4 shades (XTCH)** keeps manga screentones and gray shading. **Black & white (XTC)** files are
-half the size and use dithering for grays. Turning on *Turn wide panels sideways* is worth trying
-on the X4: its screen is narrow, so wide panels get much bigger when you turn the reader.
+half the size and use dithering for grays. The X4 has no auto-rotate, so *Turn wide panels
+sideways* (on by default) rotates wide panels and spreads to fill its narrow screen; turn the reader
+a quarter turn to the left to read them.
 
 ### Sony Reader
 
@@ -268,11 +269,11 @@ and phone or tablet comic apps. Each page is one panel.
 |---|---|
 | **Make books for** | The device to build for; see [Supported devices](#supported-devices). Your three most recent devices are at the top of the menu. |
 | **Reading direction** | *Right to left* for manga, *Left to right* for Western comics. Controls panel order and page turns. |
-| **Show as a complete page: Cover** | Leaves each chapter's first page (usually the cover) as a plain full page, not zoomed or split into panels. |
-| **Show as a complete page: Credits** | The same for the last page (usually scanlator credits). |
+| **Show as a complete page: Cover** | Keeps a chapter's first page as a plain full page, not zoomed or split, **when it looks like a cover**: in colour, or without a panel layout. If the first page is a black-and-white story page, it's split as normal. |
+| **Show as a complete page: Credits** | The same for the last page, when it looks like scanlator credits. |
 | **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is chosen. |
 | **Show whole page before its panels** | One-panel-per-page devices: show each full page first as an overview, then its panels. |
-| **Turn wide panels sideways** | One-panel-per-page devices: rotate wide panels 90° when that makes them noticeably bigger. Turn the reader to read them. |
+| **Turn wide panels sideways** | One-panel-per-page devices, on by default: any panel (or two-page spread) that is wider than it is tall is rotated a quarter turn clockwise so it fills the screen. Turn the reader a quarter turn to the left to read it. |
 | **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown for Kindles; older Kindles should use MOBI. |
 | **Save to** | Where the books go, in a subfolder named after the device. Switching devices never mixes their books. |
 | **Chapters at once** | How many chapters of the current title are converted in parallel. 2 is a good default; raise it on a fast Mac. |
@@ -297,9 +298,9 @@ PY=~/Library/Application\ Support/Manga\ Panel\ View/venv/bin/python
 | `-o DIR` | Output folder |
 | `-f FORMAT` | Kindles: `epub` or `mobi` (default `epub`; `mobi` for older Kindles). Other devices: `xtch`, `xtc`, `pdf` or `cbz` (defaults: X4 `xtch`, Sony `pdf`, Kobo and other `cbz`) |
 | `--page-first` | One-panel-per-page devices: show each whole page before its panels |
-| `--rotate-wide` | One-panel-per-page devices: turn wide panels sideways when that makes them bigger |
+| `--rotate-wide` | One-panel-per-page devices: rotate panels and spreads that are wider than tall |
 | `--ltr` | Left-to-right comics instead of manga |
-| `--skip-first N` / `--skip-last N` | Leave the first/last N pages of each chapter without panel zoom |
+| `--skip-first N` / `--skip-last N` | Keep the first/last N pages of each chapter whole when they look like a cover or credits (in colour, or no panel layout) |
 | `--nozoom 1,17,18` | Single file only: specific pages to leave without zoom |
 | `-j N` | Chapters converted in parallel |
 | `--redo` | Rebuild books that already exist |
@@ -323,11 +324,14 @@ devices, merged panels show up together on one screen. Turn on *Show whole page 
 panels* if you want the full page as a fallback everywhere.
 
 **Wide panels are tiny on the Xteink X4.**
-Turn on *Turn wide panels sideways*, and turn the reader when one of those panels comes up.
+Make sure *Turn wide panels sideways* is on (it is by default), and turn the reader a quarter turn to the left when one of those panels comes up.
 
-**A credits page gets panel zoom.**
-Some scanlation groups add two or more credit pages. The *Cover* and *Credits* switches cover
-one page at each end. For more, use `--skip-first` / `--skip-last` on the command line.
+**A credits page gets panel zoom, or a story page doesn't.**
+The *Cover* and *Credits* switches check one page at each end. They keep it whole only if it
+looks like a cover or credits: in colour (story pages are black and white), or without a panel
+layout. So chapters without a cover or credits page are split normally. A black-and-white
+credits page laid out in boxes can still be split. Some groups add two or more credit pages; for
+those, use `--skip-first` / `--skip-last` on the command line.
 
 **Setup fails.**
 The error and the last lines of the install log are shown on screen. The usual causes are no
