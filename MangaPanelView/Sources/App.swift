@@ -337,6 +337,9 @@ final class Converter: ObservableObject {
         queue.removeAll()
     }
 
+    private static let pageExtensions: Set<String> = ["jpg", "jpeg", "png", "webp", "gif", "bmp"]
+
+    /// Chapters are .cbz files and folders that directly hold page images (as the converter sees them).
     private func countChapters(_ item: QueueItem) {
         let (id, src) = (item.id, item.url)
         countQueue.async {
@@ -345,7 +348,17 @@ final class Converter: ObservableObject {
                 n = 1
             } else if let e = FileManager.default.enumerator(at: src, includingPropertiesForKeys: nil,
                                                              options: [.skipsHiddenFiles]) {
-                for case let u as URL in e where u.pathExtension.lowercased() == "cbz" { n += 1 }
+                var imageFolders = Set<String>()
+                for case let u as URL in e {
+                    if u.lastPathComponent == "__MACOSX" { e.skipDescendants(); continue }
+                    let ext = u.pathExtension.lowercased()
+                    if ext == "cbz" {
+                        n += 1
+                    } else if Self.pageExtensions.contains(ext) {
+                        imageFolders.insert(u.deletingLastPathComponent().path)
+                    }
+                }
+                n += imageFolders.count
             }
             DispatchQueue.main.async { self.update(id) { $0.chapterCount = n } }
         }
@@ -818,7 +831,7 @@ struct QueuePane: View {
         p.allowsMultipleSelection = true
         p.allowedContentTypes = [UTType(filenameExtension: "cbz") ?? .zip]
         p.prompt = "Add to Queue"
-        p.message = "Choose manga folders or .cbz chapters. Hold ⌘ to pick several."
+        p.message = "Choose manga folders, .cbz chapters or folders of page images. Hold ⌘ to pick several."
         if p.runModal() == .OK { c.add(p.urls) }
     }
 }
@@ -833,7 +846,7 @@ struct EmptyQueueView: View {
                 .font(.system(size: 44, weight: .light))
                 .foregroundStyle(.tint)
             Text("Drop manga folders or .cbz files here").font(.title3.weight(.semibold))
-            Text("Add as many titles as you like. They're converted one at a time, top to bottom.")
+            Text("Chapters can be .cbz files or folders of page images. Add as many titles as you like; they're converted one at a time, top to bottom.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Choose…", action: add).padding(.top, 4)
         }
@@ -915,7 +928,7 @@ struct QueueRow: View {
     private var detail: String {
         let chapters: String = {
             guard let n = item.chapterCount else { return "Counting chapters…" }
-            if n == 0 { return "No .cbz chapters found" }
+            if n == 0 { return "No chapters found" }
             return "\(n) chapter\(n == 1 ? "" : "s")"
         }()
         switch item.state {

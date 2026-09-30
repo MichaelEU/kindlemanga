@@ -196,13 +196,17 @@ downloader get converted and the rest are left alone, so it's cheap to re-add a 
 
 ### What to drop in
 
-Any of these work:
+A chapter can be a `.cbz` file **or a folder of page images** (JPG, PNG, WebP, GIF or BMP). Pages
+are read in name order, so `2.jpg` comes before `10.jpg`. Any of these work:
 
 | You drop | You get |
 |---|---|
-| A series folder full of `.cbz` chapters | One book per chapter, in a folder named after the series |
+| A series folder full of chapters (`.cbz` files, image folders, or a mix) | One book per chapter, in a folder named after the series |
 | A folder of series folders (a whole library) | The same, for every series inside |
 | A single `.cbz` file | One book, filed under the folder it came from |
+| A single folder of page images | One book, filed under the folder it sits in |
+
+Hidden folders and macOS `__MACOSX` leftovers are ignored.
 
 Books are named `Series - Chapter` so they're easy to tell apart in your Kindle library.
 By default they are saved to `~/Documents/Kindle Manga/<Device>/<Series>/`.

@@ -68,9 +68,33 @@ MIN_COVERAGE = 0.45  # panels covering less of the page than this: show the whol
 COLOUR_PAGE = 0.01   # more colourful pixels than this: a cover or credits page, not a black-and-white story page
 
 
-def natural_images(d):
-    exts = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
-    files = [p for p in Path(d).rglob("*") if p.suffix.lower() in exts and not p.name.startswith(".")]
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+
+def is_page(p):
+    return p.is_file() and p.suffix.lower() in IMAGE_EXTS and not p.name.startswith(".")
+
+
+def is_image_folder(p):
+    """A folder that directly holds page images is one chapter, like a .cbz."""
+    return p.is_dir() and any(is_page(c) for c in p.iterdir())
+
+
+def chapter_name(p):
+    return p.name if p.is_dir() else p.stem          # keep "Vol.1 Ch.4.5" whole for folders
+
+
+def find_chapters(root):
+    """Every .cbz and every folder of images under root (not root itself), in name order."""
+    def hidden(p):
+        return any(part.startswith(".") or part == "__MACOSX" for part in p.relative_to(root).parts)
+    found = [p for p in root.rglob("*") if not hidden(p) and
+             ((p.is_file() and p.suffix.lower() == ".cbz") or is_image_folder(p))]
+    return sorted(found, key=lambda p: str(p).lower())
+
+
+def natural_images(d, recursive=True):
+    files = [p for p in (Path(d).rglob("*") if recursive else Path(d).iterdir()) if is_page(p)]
     return sorted(files, key=lambda p: [int(t) if t.isdigit() else t for t in
                                         __import__("re").split(r"(\d+)", str(p.relative_to(d)).lower())])
 
@@ -355,14 +379,19 @@ def convert(cbz, device, rtl, nozoom, outdir, keep_epub, debug, title=None, skip
     W, H = profile["size"]
     fmt = fmt or profile["fmt"]
     cbz = Path(cbz)
-    title = title or cbz.stem
+    title = title or chapter_name(cbz)
     outdir = Path(outdir); outdir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         src, jpg, book = tmp / "src", tmp / "jpg", tmp / "book"
-        with zipfile.ZipFile(cbz) as z:
-            z.extractall(src)
-        pages = natural_images(src)
+        if cbz.is_dir():                              # a folder of images: read the pages in place
+            pages = natural_images(cbz, recursive=False)
+        else:
+            with zipfile.ZipFile(cbz) as z:
+                z.extractall(src)
+            pages = natural_images(src)
+        if not pages:
+            raise ValueError("no page images found")
         jpg.mkdir()
         for i, p in enumerate(pages, 1):
             Image.open(p).convert("RGB").save(jpg / f"{i:04d}.jpg", quality=95)
@@ -442,7 +471,7 @@ def _job(args):
 
 def main():
     ap = argparse.ArgumentParser(description="Convert manga .cbz files into Kindle books with per-panel guided view.")
-    ap.add_argument("input", help="a .cbz file, or a folder (searched recursively for .cbz)")
+    ap.add_argument("input", help="a .cbz file, a folder of page images, or a folder searched for both")
     ap.add_argument("-d", "--device", choices=DEVICES, default="basic")
     ap.add_argument("--ltr", action="store_true", help="left-to-right (western) instead of manga right-to-left")
     ap.add_argument("--nozoom", default="", help="single file only: 1-based pages to leave without panel zoom")
@@ -477,8 +506,10 @@ def main():
     src, out = Path(a.input), Path(a.out)
     if src.is_file():
         candidates, src = [src], src.parent
+    elif is_image_folder(src):                         # a single chapter folder of images
+        candidates, src = [src], src.parent
     else:
-        candidates = sorted(src.rglob("*.cbz"), key=lambda p: str(p).lower())
+        candidates = find_chapters(src)
     jobs, skipped = [], 0
     for cbz in candidates:
         if cbz.name.startswith("."):
@@ -487,7 +518,7 @@ def main():
         # chapters straight inside the dropped folder belong to a series named after that folder
         series = rel.parent if rel.parent.parts else Path(src.name)
         dest = out / series
-        title = f"{series.name} - {cbz.stem}"
+        title = f"{series.name} - {chapter_name(cbz)}"
         if (dest / f'{title.replace("/", "-")}.{fmt}').exists() and not a.redo:
             skipped += 1
             continue
