@@ -156,8 +156,8 @@ enum Device: String, CaseIterable, Identifiable {
         }
     }
 
-    var detail: String {
-        var parts = [zooms ? "Panel zoom" : "One panel per page"]
+    func detail(wholePages: Bool) -> String {
+        var parts = [wholePages ? "Whole pages" : zooms ? "Panel zoom" : "One panel per page"]
         if let format = spec.format { parts.append(format) }
         parts.append("\(spec.width)×\(spec.height)")
         if isColor { parts.append("colour") }
@@ -238,6 +238,10 @@ final class Converter: ObservableObject {
     @Published var pageFirst: Bool { didSet { defaults.set(pageFirst, forKey: "pageFirst") } }
     @Published var rotateWide: Bool { didSet { defaults.set(rotateWide, forKey: "rotateWide") } }
     @Published var xteinkFormat: String { didSet { defaults.set(xteinkFormat, forKey: "xteinkFormat") } }  // "xtch" or "xtc"
+    @Published var layout: String { didSet { defaults.set(layout, forKey: "layout") } }            // "panels" or "pages"
+    @Published var bubbleZoom: String { didSet { defaults.set(bubbleZoom, forKey: "bubbleZoom") } }  // off/small/medium/large
+    @Published var redo: Bool { didSet { defaults.set(redo, forKey: "redo") } }
+    var wholePages: Bool { layout == "pages" }
 
     // Queue (unfinished titles are remembered between launches)
     @Published var queue: [QueueItem] = [] { didSet { saveQueue() } }
@@ -256,7 +260,8 @@ final class Converter: ObservableObject {
         let d = UserDefaults.standard
         d.register(defaults: ["useBasic": true, "useScribe": false, "rtl": true,
                               "skipFirst": 1, "skipLast": 1, "jobs": 2, "format": "epub",
-                              "pageFirst": false, "rotateWide": true, "xteinkFormat": "xtch"])
+                              "pageFirst": false, "rotateWide": true, "xteinkFormat": "xtch",
+                              "layout": "panels", "bubbleZoom": "medium", "redo": false])
         output = d.string(forKey: "output").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Kindle Manga", isDirectory: true)
@@ -271,6 +276,9 @@ final class Converter: ObservableObject {
         pageFirst = d.bool(forKey: "pageFirst")
         rotateWide = d.bool(forKey: "rotateWide")
         xteinkFormat = d.string(forKey: "xteinkFormat") ?? "xtch"
+        layout = d.string(forKey: "layout") ?? "panels"
+        bubbleZoom = d.string(forKey: "bubbleZoom") ?? "medium"
+        redo = d.bool(forKey: "redo")
         rightToLeft = d.bool(forKey: "rtl")
         skipFirst = d.integer(forKey: "skipFirst")
         skipLast = d.integer(forKey: "skipLast")
@@ -383,7 +391,7 @@ final class Converter: ObservableObject {
         try? fm.createDirectory(at: engineDir, withIntermediateDirectories: true)
         // Always refresh the bundled scripts so app updates take effect.
         if let res = Bundle.main.resourceURL {
-            for name in ["panelview.py", "kumiko"] {
+            for name in ["panelview.py", "kumiko", "textboxes"] {
                 let dst = engineDir.appendingPathComponent(name)
                 try? fm.removeItem(at: dst)
                 try? fm.copyItem(at: res.appendingPathComponent(name), to: dst)
@@ -454,13 +462,15 @@ final class Converter: ObservableObject {
                         "-d", device.rawValue,
                         "-o", output.appendingPathComponent(device.folder).path,
                         "--skip-first", "\(skipFirst)", "--skip-last", "\(skipLast)",
-                        "-j", "\(jobs)"]
+                        "-j", "\(jobs)", "--layout", layout]
             if device.isKindle { args += ["--format", format] }
             if device == .x4 { args += ["--format", xteinkFormat] }
             if !device.zooms {
-                if pageFirst { args.append("--page-first") }
+                if bubbleZoom != "off" { args += ["--bubble-zoom", bubbleZoom] }
+                if pageFirst && !wholePages { args.append("--page-first") }
                 if rotateWide { args.append("--rotate-wide") }
             }
+            if redo { args.append("--redo") }
             if !rightToLeft { args.append("--ltr") }
             let code = await run(python.path, args) { self.handle($0, device: device, id: id) }
             if code != 0 && !cancelled {
@@ -658,7 +668,7 @@ struct SettingsPane: View {
             } header: {
                 Text("Make books for")
             } footer: {
-                Text("\(c.device.detail).\nBooks are sized for this screen and saved in a folder named after the device.")
+                Text("\(c.device.detail(wholePages: c.wholePages)).\nBooks are sized for this screen and saved in a folder named after the device.")
                     .foregroundStyle(.secondary)
             }
 
@@ -670,33 +680,52 @@ struct SettingsPane: View {
                             Text("Black & white (XTC)").tag("xtc")
                         }
                     }
-                    Toggle("Show whole page before its panels", isOn: $c.pageFirst)
+                    Picker("Bubble zoom", selection: $c.bubbleZoom) {
+                        Text("Off").tag("off")
+                        Text("Small text").tag("small")
+                        Text("Medium text").tag("medium")
+                        Text("Large text").tag("large")
+                    }
+                    if !c.wholePages {
+                        Toggle("Show whole page before its panels", isOn: $c.pageFirst)
+                    }
                     Toggle("Turn wide panels sideways", isOn: $c.rotateWide)
                 } header: {
-                    Text("One panel per page")
+                    Text(c.wholePages ? "Small screens" : "One panel per page")
                 } footer: {
-                    Text("For older Kindles, Kobos, the Xteink X4, Sony and other readers. 4 shades keeps manga screentones; black & white files are half the size. Panels wider than they are tall are turned sideways so they fill the screen; turn your reader a quarter turn to the left to read them. Pages where the panels can't be found are shown whole.")
+                    Text("Bubble zoom adds close-ups of the speech bubbles after a \(c.wholePages ? "page" : "panel") whose lettering would be too small to read, enlarged to the text size you pick. Panels wider than they are tall are turned sideways so they fill the screen; turn your reader a quarter turn to the left to read them.\(c.device == .x4 ? " 4 shades keeps manga screentones; black & white files are half the size." : "")")
                         .foregroundStyle(.secondary)
                 }
             }
 
             Section {
+                Picker("Layout", selection: $c.layout) {
+                    Text("Panel by panel").tag("panels")
+                    Text("Whole pages").tag("pages")
+                }
                 Picker("Reading direction", selection: $c.rightToLeft) {
                     Text("Right to left").tag(true)
                     Text("Left to right").tag(false)
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Show as a complete page")
-                    Text("A chapter's first and last pages are kept whole, without zooming or splitting, when they look like a cover or credits: in colour, or without a panel layout. Story pages are always split.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                if !c.wholePages {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show as a complete page")
+                        Text("A chapter's first and last pages are kept whole, without zooming or splitting, when they look like a cover or credits: in colour, or without a panel layout. Story pages are always split.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Toggle("Cover", isOn: Binding(
+                        get: { c.skipFirst > 0 }, set: { c.skipFirst = $0 ? 1 : 0 }))
+                    Toggle("Credits", isOn: Binding(
+                        get: { c.skipLast > 0 }, set: { c.skipLast = $0 ? 1 : 0 }))
                 }
-                Toggle("Cover", isOn: Binding(
-                    get: { c.skipFirst > 0 }, set: { c.skipFirst = $0 ? 1 : 0 }))
-                Toggle("Credits", isOn: Binding(
-                    get: { c.skipLast > 0 }, set: { c.skipLast = $0 ? 1 : 0 }))
             } header: {
                 Text("Pages")
+            } footer: {
+                if c.wholePages {
+                    Text("Skips panel detection: each page's plain margins are trimmed and the page is sized to fill the screen. Faster, and great on big screens like the Scribe.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -727,6 +756,8 @@ struct SettingsPane: View {
                 Stepper(value: $c.jobs, in: 1...8) {
                     LabeledContent("Chapters at once", value: "\(c.jobs)")
                 }
+                Toggle("Rebuild books that already exist", isOn: $c.redo)
+                    .help("Normally chapters that already have a book are skipped. Turn this on after changing settings to remake them.")
             } header: {
                 Text("Output")
             } footer: {

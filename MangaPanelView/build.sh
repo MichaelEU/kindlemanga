@@ -17,6 +17,9 @@ echo "Icon…"
 "$PY" make_icon.py build/AppIcon.iconset
 iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 
+echo "Text finder…"
+swiftc -O -target "$(uname -m)-apple-macos14.0" Tools/textboxes.swift -o "$APP/Contents/Resources/textboxes"
+
 cp -R Resources/panelview.py Resources/kumiko "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'

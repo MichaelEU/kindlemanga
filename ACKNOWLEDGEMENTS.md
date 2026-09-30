@@ -94,6 +94,9 @@ bundled in this repository.
 | [Pillow](https://python-pillow.org/) | Reading WebP/JPEG/PNG pages, resizing, dithering, writing PDFs, drawing the app icon | MIT-CMU (HPND) |
 | [Requests](https://requests.readthedocs.io/) | Required by Kumiko's command line | Apache 2.0 |
 
+Bubble zoom uses Apple's **Vision** framework, which ships with macOS, to find lettering on the
+page. It runs entirely on your Mac.
+
 The app itself uses Apple's SwiftUI and AppKit frameworks and SF Symbols icons, which ship
 with macOS.
 

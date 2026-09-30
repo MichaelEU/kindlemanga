@@ -49,6 +49,25 @@ Very small detections are ignored. Panels that already fill most of the page are
 split, because it would gain nothing. On one-panel-per-page devices, a page whose panels cover
 less than about half of it is also shown whole first, so art outside the panels isn't lost.
 
+### Bubble zoom (small screens)
+
+On tiny screens like the Xteink X4, a whole panel can still leave the lettering too small to
+read. With **Bubble zoom** on, the app finds the lettering with macOS's built-in text recognition
+(Apple Vision, on your Mac, nothing is uploaded), groups the lines into speech bubbles in reading
+order, and adds close-up screens after any panel whose text would show smaller than the size you
+picked. Neighbouring bubbles share a screen when they fit.
+
+It only uses *where* the text is, not what it says, so the original lettering is shown exactly as
+the scanlators drew it: enlarged, cleaned up to crisp black on white, and lightly sharpened.
+Low-resolution scans are enlarged before the text search so small lettering is still found. Sound
+effects and big titles are skipped.
+
+### Whole pages (no panel detection)
+
+The **Whole pages** layout skips panel detection. Each page's plain white or black margins are
+trimmed and the page is sized to fill the screen. It's faster and works well on big screens like
+the Kindle Scribe; on small screens it still works with page rotation and bubble zoom.
+
 ### Supported devices
 
 Screen sizes follow [Kindle Comic Converter](https://github.com/ciromattia/kcc)'s device profiles.
@@ -272,15 +291,18 @@ and phone or tablet comic apps. Each page is one panel.
 | Setting | What it does |
 |---|---|
 | **Make books for** | The device to build for; see [Supported devices](#supported-devices). Your three most recent devices are at the top of the menu. |
+| **Layout** | *Panel by panel* (default) follows the detected panels. *Whole pages* skips panel detection and shows each page with its margins trimmed. |
 | **Reading direction** | *Right to left* for manga, *Left to right* for Western comics. Controls panel order and page turns. |
 | **Show as a complete page: Cover** | Keeps a chapter's first page as a plain full page, not zoomed or split, **when it looks like a cover**: in colour, or without a panel layout. If the first page is a black-and-white story page, it's split as normal. |
 | **Show as a complete page: Credits** | The same for the last page, when it looks like scanlator credits. |
 | **Xteink shades** | *4 shades (XTCH)* or *Black & white (XTC)*. Shown when the X4 is chosen. |
 | **Show whole page before its panels** | One-panel-per-page devices: show each full page first as an overview, then its panels. |
+| **Bubble zoom** | Small screens: *Off*, or *Small / Medium / Large text*. Adds close-ups of speech bubbles whose lettering would be too small, enlarged to that size (about 2.8, 3.6 or 4.6 mm per line on the device). |
 | **Turn wide panels sideways** | One-panel-per-page devices, on by default: any panel (or two-page spread) that is wider than it is tall is rotated a quarter turn clockwise so it fills the screen. Turn the reader a quarter turn to the left to read it. |
 | **Kindle format** | EPUB for Send to Kindle, MOBI for USB (needs Kindle Previewer 4). Shown for Kindles; older Kindles should use MOBI. |
 | **Save to** | Where the books go, in a subfolder named after the device. Switching devices never mixes their books. |
 | **Chapters at once** | How many chapters of the current title are converted in parallel. 2 is a good default; raise it on a fast Mac. |
+| **Rebuild books that already exist** | Normally chapters that already have a book are skipped. Turn this on after changing settings to remake them. |
 
 ---
 
@@ -302,6 +324,8 @@ PY=~/Library/Application\ Support/Manga\ Panel\ View/venv/bin/python
 | `-o DIR` | Output folder |
 | `-f FORMAT` | Kindles: `epub` or `mobi` (default `epub`; `mobi` for older Kindles). Other devices: `xtch`, `xtc`, `pdf` or `cbz` (defaults: X4 `xtch`, Sony `pdf`, Kobo and other `cbz`) |
 | `--page-first` | One-panel-per-page devices: show each whole page before its panels |
+| `--layout panels` / `pages` | Follow the detected panels (default), or show whole pages with trimmed margins |
+| `--bubble-zoom off` / `small` / `medium` / `large` | One-panel-per-page devices: add close-ups of speech bubbles with small lettering (needs the `textboxes` helper that the app installs next to the converter) |
 | `--rotate-wide` | One-panel-per-page devices: rotate panels and spreads that are wider than tall |
 | `--ltr` | Left-to-right comics instead of manga |
 | `--skip-first N` / `--skip-last N` | Keep the first/last N pages of each chapter whole when they look like a cover or credits (in colour, or no panel layout) |
@@ -345,6 +369,15 @@ internet connection, or `python3` not being installed.
 Allow access when macOS asks. If you denied it earlier, go to System Settings → Privacy &
 Security → Files and Folders and turn it on for Manga Panel View.
 
+**I changed a setting but the books look the same.**
+Chapters that already have a book are skipped. Turn on *Rebuild books that already exist*
+(or delete the old books) and convert again.
+
+**Bubble zoom shows a sound effect, or misses a bubble.**
+Stylised lettering written in Latin letters can be taken for dialogue, and faint or tiny lettering
+on very low-resolution scans can be missed. Those bubbles are still readable on the panel's own
+screen, just smaller.
+
 **Start over completely.**
 Quit the app, delete `~/Library/Application Support/Manga Panel View`, and open it again.
 Setup will run again.
@@ -359,11 +392,12 @@ MangaPanelView/
 ├── Resources/
 │   ├── panelview.py           Converter: panel detection → EPUB/MOBI, XTCH/XTC, PDF, CBZ
 │   └── kumiko/                Bundled Kumiko panel detector (AGPL-3.0, unmodified)
+├── Tools/textboxes.swift      Finds lettering with Apple Vision, for bubble zoom
 ├── make_icon.py               Draws the app icon
 └── build.sh                   Builds the .app with the Command Line Tools
 ```
 
-The app copies `panelview.py` and `kumiko/` into its Application Support folder on every
+The app copies `panelview.py`, `kumiko/` and the `textboxes` helper into its Application Support folder on every
 launch, so a rebuilt app always runs the latest converter.
 
 To support another device, add a profile to `DEVICES` in `panelview.py` (screen size, `zoom`
